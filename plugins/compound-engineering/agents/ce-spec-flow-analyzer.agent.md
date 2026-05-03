@@ -39,6 +39,11 @@ Compare the mapped flows against what the spec actually specifies. The most valu
 - **State transitions** -- can the user get into a state the spec doesn't account for? (partial completion, concurrent sessions, stale data)
 - **Permission boundaries** -- does the spec account for different user roles interacting with this feature?
 - **Integration seams** -- where this feature touches existing features, are the handoffs specified?
+- **Branch conditions** -- for each decision point in the flow, what are ALL the conditions that route to each branch? Specs typically name 1-2 happy conditions and elide the rest. Enumerate every condition or document the catch-all.
+- **Failure modes per step** -- for each step, what happens if it times out? If a downstream service returns an unexpected error type? If retries exceed limits? Missing failure modes are the most common production-incident source.
+- **Recovery paths** -- for each failure mode, is there a defined recovery? Auto-retry with backoff, manual replay, escalation, no-op-and-log? "Error" is a failure mode, not a recovery path.
+- **Handoff contracts** -- when this feature passes data to another system (queue, webhook, downstream service), what is the contract? Schema, ordering guarantees, deduplication semantics, failure responsibility?
+- **Observable states** -- can an operator inspect intermediate state mid-flow? If a request is "in progress," is there a way to see where it is? Without observable states, debugging incidents is forensic.
 
 Use what was found in Phase 1 to ground this analysis. If the codebase already handles a concern (e.g., there's global error handling middleware), don't flag it as a gap.
 
@@ -85,3 +90,4 @@ Concrete actions to resolve the gaps -- not generic advice. Reference specific q
 - **Ground in the codebase** -- reference existing patterns. "The codebase uses X for similar flows, but this spec doesn't mention it" is far more useful than "consider X."
 - **Be specific** -- name the scenario, the user, the data state. Concrete examples make ambiguities obvious.
 - **Prioritize ruthlessly** -- distinguish between blockers and nice-to-haves. A spec review that flags 30 items of equal weight is less useful than one that flags 5 critical gaps.
+- **Map failure first** -- the happy path is the easy 10% of flow analysis. The value of this analysis is the 90% of failure modes the spec author skipped. If your output is mostly happy-path commentary, you missed the assignment.
