@@ -350,6 +350,19 @@ Pass `{run_id}` to every persona sub-agent so they can write their full analysis
 
 **Large shared context — pass paths, not contents.** The diff and file list go to every reviewer and validator. When inlining them into each subagent prompt would be wasteful (many files / a big diff), write them once into the run dir (e.g. `full.diff`, `files.txt`) and pass those **paths** in the diff / changed-files slots instead of inline content — the subagent and validator templates instruct the child to Read a staged path. Inline a small diff directly.
 
+#### Workflow acceleration (`mode:agent` only)
+
+In `mode:agent`, when the **Workflow tool is available** (Claude Code), run the report-only fan-out as a dynamic workflow instead of dispatching reviewers inline — the persona returns and the merge stay in the workflow runtime, so only the final envelope enters this orchestrator's context. This is also the **cross-platform guard**: on targets without the Workflow tool (Codex, Gemini, etc.) the fallback below is the unchanged, fully-functional review, so a converted skill never emits orchestration the target cannot run.
+
+1. Read `workflows/code-review-fanout.generated.js` (co-located; resolved relative to this skill).
+2. Invoke the Workflow tool with `script` set to that file's contents and `args`:
+   - `run_id`, `diffPaths` `{ full, files }`, `standardsPaths` — the Run ID and staged paths above; `scope` `{ base, branch, head_sha, pr_url, files_changed }`, `intent`, `intent_confidence`, `pr_scope_mode`, `head_ref` — from Stages 1-2.
+   - `personas` — the selected persona reviewers as `{ name, agentType, model, extraContext }`: `name` is the short persona name (e.g. `correctness`), `agentType` is `ce-<name>-reviewer`, `model` is `sonnet` except `correctness`/`security`/`adversarial` (omit `model` so they inherit the session model — same tiering as the prose dispatch). Set `extraContext` only where the prose adds per-persona context: the `<review-base>` block for `data-migration`, the `<standards-paths>` block for `project-standards`.
+   - `ceAgents` — selected CE agents as `{ name, agentType, bucket, model: "sonnet" }`: `ce-learnings-researcher` → `bucket: "learnings"`, `ce-agent-native-reviewer` → `bucket: "agent_native"`, `ce-deployment-verification-agent` → `bucket: "deployment"`.
+3. The workflow returns the `mode:agent` JSON envelope (it has already run fan-out, merge, and Stage 5b validation). Deliver it as the JSON output (see ### JSON output format). Do **not** re-run Stages 4, 5, or 5b on its result, and do **not** apply — Stage 5c stays skipped.
+
+When the Workflow tool is unavailable, ignore this subsection and run the prose dispatch below. Default (interactive) mode always uses the prose path.
+
 #### Spawning
 
 Omit the `mode` parameter when dispatching sub-agents so the user's configured permission settings apply. Do not pass `mode: "auto"`.

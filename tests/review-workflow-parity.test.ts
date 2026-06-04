@@ -1,33 +1,20 @@
 import { readFile } from "fs/promises"
 import path from "path"
 import { describe, expect, test } from "bun:test"
+import { assembleReviewWorkflow, GENERATED_PATH } from "../scripts/build-review-workflow"
 
 // Verifies the ce-code-review dynamic-workflow ASSEMBLY contract without a live
 // Workflow run. The Workflow runtime is self-contained (no sibling imports) and
-// requires `export const meta` as the first statement, so the orchestrator
-// assembles the script by inserting the canonical merge module at a marker.
-// These tests pin that contract; the live persona fan-out + output parity (U5)
-// is validated separately in a deliberate run.
+// requires `export const meta` as the first statement, so the workflow is
+// assembled at build time (scripts/build-review-workflow.ts) into a committed,
+// runnable artifact that the SKILL.md mode:agent guard passes verbatim. These
+// tests pin that contract; the live persona fan-out + output parity (U5) is
+// validated separately in a deliberate run.
 
 const WF_DIR = "plugins/compound-engineering/skills/ce-code-review/workflows"
-const MARKER = "/* __MERGE_MODULE__ */"
 
 async function read(rel: string): Promise<string> {
   return readFile(path.join(process.cwd(), rel), "utf8")
-}
-
-/**
- * The canonical assembly the SKILL.md guard performs at invocation time:
- *   1. take merge-findings.js, drop its trailing `export { ... }` line,
- *   2. substitute it for the single merge-module marker in code-review-fanout.js.
- * Implemented with a function replacement so `$` in the inserted source (the
- * module's template literals) is treated literally.
- */
-async function assemble(): Promise<string> {
-  const merge = await read(`${WF_DIR}/merge-findings.js`)
-  const fanout = await read(`${WF_DIR}/code-review-fanout.js`)
-  const mergeInline = merge.replace(/\nexport\s*\{[^}]*\};\s*$/, "\n")
-  return fanout.replace(MARKER, () => mergeInline)
 }
 
 describe("ce-code-review workflow assembly", () => {
@@ -45,9 +32,16 @@ describe("ce-code-review workflow assembly", () => {
     expect(stripped).toContain("function mergeFindings")
   })
 
-  test("assembled script keeps `export const meta` as the first statement", async () => {
-    const assembled = await assemble()
-    const codeOnly = assembled
+  test("committed generated workflow is up to date with its sources", async () => {
+    const committed = await read(GENERATED_PATH)
+    const fresh = await assembleReviewWorkflow()
+    // If this fails, run: bun run scripts/build-review-workflow.ts
+    expect(committed).toBe(fresh)
+  })
+
+  test("generated workflow keeps `export const meta` as the first statement", async () => {
+    const generated = await read(GENERATED_PATH)
+    const codeOnly = generated
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/^[ \t]*\/\/.*$/gm, "")
       .split("\n")
@@ -56,9 +50,9 @@ describe("ce-code-review workflow assembly", () => {
     expect(codeOnly[0].startsWith("export const meta")).toBe(true)
   })
 
-  test("assembled script is syntactically valid JavaScript", async () => {
-    const assembled = await assemble()
-    const body = assembled.replace("export const meta =", "const meta =")
+  test("generated workflow is syntactically valid JavaScript", async () => {
+    const generated = await read(GENERATED_PATH)
+    const body = generated.replace("export const meta =", "const meta =")
     // Wrap top-level await/return + workflow globals; throws on any syntax error.
     expect(() =>
       new Function(
@@ -75,10 +69,11 @@ describe("ce-code-review workflow assembly", () => {
     ).not.toThrow()
   })
 
-  test("assembled script inlines the merge logic and verdict derivation", async () => {
-    const assembled = await assemble()
-    expect(assembled).toContain("function mergeFindings")
-    expect(assembled).toContain("function deriveVerdict")
+  test("generated workflow inlines merge, validation, and verdict logic", async () => {
+    const generated = await read(GENERATED_PATH)
+    expect(generated).toContain("function mergeFindings")
+    expect(generated).toContain("function runValidation")
+    expect(generated).toContain("function deriveVerdict")
   })
 
   test("workflow meta is a pure literal (no computed values)", async () => {
@@ -87,18 +82,15 @@ describe("ce-code-review workflow assembly", () => {
       fanout.indexOf("export const meta = {"),
       fanout.indexOf("};", fanout.indexOf("export const meta = {")) + 2,
     )
-    // No interpolation, function calls, or spreads in the meta literal.
     expect(metaBlock).not.toMatch(/\$\{/)
     expect(metaBlock).not.toMatch(/\.\.\./)
   })
 
   test("compact return schema omits detail-tier fields", async () => {
     const fanout = await read(`${WF_DIR}/code-review-fanout.js`)
-    expect(fanout).toContain("COMPACT_SCHEMA")
-    // Detail-tier fields live on disk, never in the compact return schema.
     const schemaBlock = fanout.slice(
       fanout.indexOf("const COMPACT_SCHEMA"),
-      fanout.indexOf("// Shared review bundle"),
+      fanout.indexOf("const VERDICT_SCHEMA"),
     )
     expect(schemaBlock).not.toContain("why_it_matters")
     expect(schemaBlock).not.toContain("evidence")
