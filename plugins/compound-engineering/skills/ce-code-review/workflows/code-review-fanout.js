@@ -33,7 +33,8 @@ export const meta = {
     "Report-only persona fan-out + deterministic merge for ce-code-review mode:agent",
   phases: [
     { title: "Fan-out", detail: "parallel persona reviewers + CE agents, schema'd" },
-    { title: "Merge", detail: "deterministic dedup/gate/route, assemble envelope" },
+    { title: "Merge", detail: "deterministic dedup/gate/route" },
+    { title: "Validate", detail: "independent per-finding validators, drop rejected" },
   ],
 };
 
@@ -95,6 +96,16 @@ const COMPACT_SCHEMA = {
   },
 };
 
+// Stage 5b verdict schema — one independent validator per surviving finding.
+const VERDICT_SCHEMA = {
+  type: "object",
+  required: ["validated", "reason"],
+  properties: {
+    validated: { type: "boolean" },
+    reason: { type: "string" },
+  },
+};
+
 // Shared review bundle — paths only, never inlined content (the child Reads
 // what it needs). Scope mode controls how the child inspects cited code.
 function reviewBundle() {
@@ -115,6 +126,9 @@ function personaPrompt(p) {
   return [
     "Review the staged diff strictly through your reviewer persona.",
     reviewBundle(),
+    // Per-persona extra context (e.g. <review-base> for data-migration,
+    // <standards-paths> for project-standards) when the orchestrator supplies it.
+    p.extraContext ? p.extraContext : "",
     "",
     "In local-aligned scope, Read/Grep the cited code, callers, and guards.",
     "In pr-remote/branch-remote scope, inspect via the remote head ref or diff",
@@ -142,6 +156,102 @@ function deriveVerdict(findings) {
   if (findings.some((f) => f.severity === "P0")) return "Not ready";
   if (findings.length > 0) return "Ready with fixes";
   return "Ready to merge";
+}
+
+// Stage 5b validator prompt — independent re-verification of one finding,
+// ported from references/validator-template.md (inlined because the workflow
+// runtime cannot Read sibling files).
+function validatorPrompt(f) {
+  const reviewer = (f.reviewers && f.reviewers[0]) || "reviewer";
+  return [
+    "You are an independent validator for ONE code review finding. Verify whether",
+    "it holds up under fresh inspection. You have no commitment to it; reject false",
+    "positives. Conservative bias: when in doubt, reject.",
+    "",
+    "Finding:",
+    "  Title: " + f.title,
+    "  Severity: " + f.severity,
+    "  File: " + f.file,
+    "  Line: " + f.line,
+    "  Suggested fix: " + (f.suggested_fix || "(none)"),
+    "  Original reviewer(s): " + (f.reviewers || []).join(", "),
+    "  Confidence anchor: " + f.confidence,
+    "",
+    "Optional context (the original why-it-matters): you may Read " +
+      ARTIFACT_DIR + "/" + reviewer + ".json; proceed without it if absent.",
+    DIFF_PATHS.full ? "Full diff (Read this path): " + DIFF_PATHS.full : "",
+    "Scope mode: " + PR_SCOPE_MODE + (HEAD_REF ? " | head ref: " + HEAD_REF : ""),
+    "In local-aligned scope, Read/Grep the cited code, its callers, and guards.",
+    "In pr-remote/branch-remote, inspect via the head ref or diff hunks only.",
+    "",
+    "Decide: (1) is the issue real in the code as written; (2) is it introduced by",
+    "THIS diff (not pre-existing); (3) is it not already handled by a guard,",
+    "middleware, framework default, or type constraint elsewhere?",
+    "",
+    'Return ONLY {"validated": true|false, "reason": "<one sentence>"}.',
+    "If you cannot read the cited file, return validated:false with that reason.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// Stage 5b: validate survivors with a bounded budget. P0/P1 are always
+// validated (cap raised if they alone exceed 15); the P2/P3 tail beyond the cap
+// is dropped from the report and counted. Infra failure drops P2/P3 but keeps
+// P0/P1 as degraded — a transient failure must never silently remove a critical
+// finding. Findings are identified by their stable merge number.
+async function runValidation(findings) {
+  const result = {
+    survivors: new Set(),
+    dropped: [],
+    degraded: [],
+    validated_true: 0,
+    validated_false: 0,
+    infra_failures: 0,
+    over_budget: 0,
+  };
+  if (findings.length === 0) return result;
+
+  // findings arrive already sorted severity -> anchor desc by the merge step.
+  const criticalCount = findings.filter((f) => f.severity === "P0" || f.severity === "P1").length;
+  const cap = Math.max(15, criticalCount);
+  const selected = findings.slice(0, cap);
+  result.over_budget = findings.length - selected.length;
+
+  const verdicts = await parallel(
+    selected.map((f) => () =>
+      agent(validatorPrompt(f), {
+        label: "validate:#" + f.number,
+        phase: "Validate",
+        model: "sonnet",
+        schema: VERDICT_SCHEMA,
+      })
+        .then((v) => ({ f, v, infra: false }))
+        .catch(() => ({ f, v: null, infra: true })),
+    ),
+  );
+
+  for (const { f, v, infra } of verdicts) {
+    const critical = f.severity === "P0" || f.severity === "P1";
+    if (infra || !v || typeof v.validated !== "boolean") {
+      result.infra_failures++;
+      if (critical) {
+        result.survivors.add(f.number);
+        result.degraded.push(f.number);
+      } else {
+        result.dropped.push({ number: f.number, reason: "validator failed" });
+      }
+      continue;
+    }
+    if (v.validated) {
+      result.validated_true++;
+      result.survivors.add(f.number);
+    } else {
+      result.validated_false++;
+      result.dropped.push({ number: f.number, reason: v.reason || "rejected" });
+    }
+  }
+  return result;
 }
 
 // ---- fan-out ---------------------------------------------------------------
@@ -190,28 +300,37 @@ for (const o of ceOutputs.filter(Boolean)) {
   else if (o.bucket === "deployment") deployment_notes.push(o.text);
 }
 
+// ---- validate (Stage 5b) ---------------------------------------------------
+phase("Validate");
+const validation = await runValidation(merged.findings);
+const survived = (f) => validation.survivors.has(f.number);
+const findings = merged.findings.filter(survived);
+const actionable_findings = merged.actionable_findings.filter(survived);
+
 const status =
-  validReturns.length === 0 ? "degraded" : droppedAgents > 0 ? "degraded" : "complete";
+  validReturns.length === 0 || droppedAgents > 0 || validation.degraded.length > 0
+    ? "degraded"
+    : "complete";
 
 log(
-  "Fan-out complete: " +
+  "Report-only complete: " +
     validReturns.length +
     "/" +
     PERSONAS.length +
     " reviewers, " +
-    merged.findings.length +
-    " findings after gate",
+    findings.length +
+    " findings after gate + validation",
 );
 
 return {
   status,
-  verdict: deriveVerdict(merged.findings),
+  verdict: deriveVerdict(findings),
   scope: SCOPE,
   intent: INTENT,
   intent_confidence: INTENT_CONFIDENCE,
   reviewers: validReturns.map((r) => r.reviewer),
-  findings: merged.findings,
-  actionable_findings: merged.actionable_findings,
+  findings,
+  actionable_findings,
   pre_existing_findings: merged.pre_existing_findings,
   requirements_completeness: A.requirements_completeness ?? null,
   learnings,
@@ -219,7 +338,18 @@ return {
   deployment_notes,
   residual_risks: merged.residual_risks,
   testing_gaps: merged.testing_gaps,
-  coverage: { ...merged.coverage, dropped_agents: droppedAgents },
+  coverage: {
+    ...merged.coverage,
+    dropped_agents: droppedAgents,
+    validation: {
+      validated_true: validation.validated_true,
+      validated_false: validation.validated_false,
+      dropped: validation.dropped,
+      degraded: validation.degraded,
+      infra_failures: validation.infra_failures,
+      over_budget: validation.over_budget,
+    },
+  },
   artifact_path: ARTIFACT_DIR + "/",
   run_id: RUN_ID,
 };
