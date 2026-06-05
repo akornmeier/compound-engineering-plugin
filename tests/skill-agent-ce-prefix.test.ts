@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "fs"
+import { existsSync, readdirSync, readFileSync } from "fs"
 import path from "path"
 import { describe, expect, test } from "bun:test"
 import { parseFrontmatter } from "../src/utils/frontmatter"
@@ -23,8 +23,18 @@ function frontmatterName(filePath: string): string {
 }
 
 describe("compound-engineering skill ce- prefix", () => {
+  // A skill directory is one that actually contains a SKILL.md. Filtering on
+  // that ignores stray non-skill dirs (e.g. logs/, .claude/) that hook tooling
+  // can leave under skills/ when run with that CWD — they are not skills and
+  // must not fail the naming check. A real mis-named skill still has a SKILL.md
+  // and is still caught.
   const skillDirs = readdirSync(SKILLS_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !SKILL_EXEMPTIONS.has(entry.name))
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        !SKILL_EXEMPTIONS.has(entry.name) &&
+        existsSync(path.join(SKILLS_DIR, entry.name, "SKILL.md")),
+    )
     .map((entry) => entry.name)
 
   for (const dirName of skillDirs) {
