@@ -106,6 +106,12 @@ When autofix mode runs and the in-skill fixer can't resolve everything, the resi
 
 Compound-engineering pipeline artifacts (`docs/brainstorms/*`, `docs/plans/*.md`, `docs/solutions/*.md`) are protected — reviewers' findings to delete or gitignore them are discarded during synthesis. These are decision artifacts the pipeline depends on; reviewers shouldn't garbage-collect them.
 
+### 9. Dynamic-workflow acceleration (`mode:agent`, Claude Code)
+
+In `mode:agent` on Claude Code, the report-only fan-out runs as a background **dynamic workflow**: the persona reviewers, the merge/dedup, and the Stage 5b validation all execute in the workflow runtime, so only the final JSON envelope enters the caller's context instead of every reviewer's intermediate output. The merge/dedup logic — previously prose the orchestrator executed by reasoning — is a deterministic, unit-tested module, so the same inputs always produce the same gated/sorted/numbered findings.
+
+This path is gated to `mode:agent` and to harnesses that expose the workflow primitive. On targets without it (Codex, Gemini, OpenCode) and in interactive mode, the unchanged in-line dispatch runs — the workflow is an acceleration behind the existing seam, not a new contract. Output is held at parity with the in-line path.
+
 ---
 
 ## Quick Example
