@@ -79,6 +79,35 @@ describe("ce-code-review workflow assembly", () => {
     expect(generated).toContain("function deriveVerdict")
   })
 
+  // Regression guards for bugs the live eval (U5) surfaced — none are reachable
+  // below the live boundary, so they are pinned at the source level.
+
+  test("workflow parses args delivered as a JSON string (not just an object)", async () => {
+    // The Workflow runtime delivers args as a JSON string; a naive `args || {}`
+    // drops everything and produces an empty review.
+    const generated = await read(GENERATED_PATH)
+    expect(generated).toContain('typeof A === "string"')
+    expect(generated).toContain("JSON.parse(A)")
+  })
+
+  test("workflow logs dispatch failures instead of silently dropping agents", async () => {
+    const generated = await read(GENERATED_PATH)
+    // A swallowed agentType-resolution error reads as a (wrong) empty review.
+    expect(generated).toMatch(/persona .* failed/)
+  })
+})
+
+describe("ce-code-review workflow guard correctness", () => {
+  const SKILL_PATH = `${WF_DIR.replace("/workflows", "")}/SKILL.md`
+
+  test("guard specifies plugin-namespaced agentType (bare ce-* does not resolve)", async () => {
+    const content = await read(SKILL_PATH)
+    // The workflow agent() registry resolves `compound-engineering:ce-*`, not
+    // the bare `ce-*` form used for skill-prose agent references.
+    expect(content).toContain("compound-engineering:ce-<name>-reviewer")
+    expect(content).toContain("compound-engineering:ce-learnings-researcher")
+  })
+
   test("workflow meta is a pure literal (no computed values)", async () => {
     const fanout = await read(`${WF_DIR}/code-review-fanout.js`)
     const metaBlock = fanout.slice(

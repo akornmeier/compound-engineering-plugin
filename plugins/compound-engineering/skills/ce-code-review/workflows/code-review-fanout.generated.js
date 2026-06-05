@@ -337,7 +337,17 @@ function mergeFindings(returns) {
 // Assembly inserts merge-findings.js here, exposing mergeFindings(returns).
 
 // ---- args ------------------------------------------------------------------
-const A = args || {};
+// The Workflow runtime may deliver `args` as an object OR as a JSON string
+// (see the platform's example workflows). Accept both.
+let A = args;
+if (typeof A === "string") {
+  try {
+    A = JSON.parse(A);
+  } catch (e) {
+    A = {};
+  }
+}
+A = A || {};
 const RUN_ID = A.run_id || "unknown-run";
 const ARTIFACT_DIR = "/tmp/compound-engineering/ce-code-review/" + RUN_ID;
 const PERSONAS = Array.isArray(A.personas) ? A.personas : [];
@@ -562,7 +572,12 @@ const structured = await parallel(
       ...(p.model ? { model: p.model } : {}),
     })
       .then((r) => (r ? { ...r, reviewer: r.reviewer || p.name } : null))
-      .catch(() => null),
+      .catch((e) => {
+        // Surface dispatch/runtime failures instead of silently dropping —
+        // a swallowed agentType-resolution error reads as an empty review.
+        log("persona " + p.name + " (" + p.agentType + ") failed: " + (e && e.message ? e.message : String(e)));
+        return null;
+      }),
   ),
 );
 
@@ -575,7 +590,10 @@ const ceOutputs = await parallel(
       ...(a.model ? { model: a.model } : {}),
     })
       .then((text) => ({ name: a.name, bucket: a.bucket, text }))
-      .catch(() => null),
+      .catch((e) => {
+        log("CE agent " + a.name + " (" + a.agentType + ") failed: " + (e && e.message ? e.message : String(e)));
+        return null;
+      }),
   ),
 );
 
