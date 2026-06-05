@@ -80,7 +80,7 @@ The classification vocabulary. Each candidate names the pattern(s) it maps to �
 ### Worked examples (live code, not abstractions)
 
 - **In-repo, committed, portable:** `plugins/compound-engineering/skills/ce-code-review/workflows/code-review-fanout.js` (+ `merge-findings.js`, `code-review-fanout.generated.js`) — the landed first conversion. Demonstrates **fanout-and-synthesize** with a deterministic merge/dedup module and a confidence-gated survivor set. This is the template every later conversion copies.
-- **Richer pattern reference (CC-local, global workflow):** `~/.claude/workflows/mine-claude-md-from-sessions.js` — demonstrates **parallel mine (fan-out) -> pipelined adversarial-verify -> loop-until-dry -> synthesize** in one script. Use it to see the rigor patterns (`adversarial-verification`, `loop-until-dry`) the first conversion deliberately *deferred*. (Lives in user home, not the repo — a personal example, not a portable artifact.)
+- **Richer pattern reference (personal, not in-repo — won't resolve for other readers):** `~/.claude/workflows/mine-claude-md-from-sessions.js` — a CC-local global workflow that demonstrates **parallel mine (fan-out) -> pipelined adversarial-verify -> loop-until-dry -> synthesize** in one script. Cited only to illustrate the rigor patterns (`adversarial-verification`, `loop-until-dry`) the first conversion deliberately *deferred*; it lives in user home and is not a portable artifact.
 
 ---
 
@@ -274,7 +274,7 @@ Skills couple to the memory loop **only through thin read (retrieval) and write 
 
 ### R15 — Claude-Code-only, no broken orchestration on other targets
 
-Workflow-based steps are a CC-exclusive capability. Conversions owe **no graceful-degradation fallback** to non-CC targets (Codex, Cursor, Copilot, Gemini), but a converted skill **must not emit broken orchestration instructions** on those targets.
+Workflow-based steps are a CC-exclusive capability. Conversions owe non-CC targets (Codex, Cursor, Copilot, Gemini) **no workflow-execution support** — the orchestration itself need not run there. But a converted skill **must still degrade to a working prose fallback** on those targets; it may never emit broken orchestration instructions the target cannot execute.
 
 **Reject-test:** A conversion violates R15 if, when converted to a non-CC target, the skill emits workflow-invocation prose that the target cannot execute (a dangling "invoke the Workflow tool" with no fallback). The landed pattern satisfies this with an **inline guard**: "when the Workflow tool is available, run the workflow; otherwise run the prose dispatch" (`ce-code-review/SKILL.md:353-364`). Any conversion lacking an equivalent availability guard + prose fallback fails the test. **Portability is not a ranking axis (R3)** — but non-broken output on other targets is a hard constraint.
 
