@@ -1,5 +1,5 @@
 ---
-status: active
+status: completed
 type: feat
 created: 2026-06-04
 origin: docs/brainstorms/2026-06-04-dynamic-workflows-opportunity-map-requirements.md
