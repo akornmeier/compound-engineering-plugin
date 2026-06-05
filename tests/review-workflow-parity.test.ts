@@ -2,6 +2,9 @@ import { readFile } from "fs/promises"
 import path from "path"
 import { describe, expect, test } from "bun:test"
 import { assembleReviewWorkflow, GENERATED_PATH } from "../scripts/build-review-workflow"
+import { transformContentForCodex } from "../src/utils/codex-content"
+import { transformSkillContentForOpenCode } from "../src/converters/claude-to-opencode"
+import { parseFrontmatter } from "../src/utils/frontmatter"
 
 // Verifies the ce-code-review dynamic-workflow ASSEMBLY contract without a live
 // Workflow run. The Workflow runtime is self-contained (no sibling imports) and
@@ -94,5 +97,38 @@ describe("ce-code-review workflow assembly", () => {
     )
     expect(schemaBlock).not.toContain("why_it_matters")
     expect(schemaBlock).not.toContain("evidence")
+  })
+})
+
+// U4 — the skill must ship intact to non-Claude targets. The workflow path is
+// Claude-Code-only; the guard's fallback is the cross-platform safety net, so
+// the converted SKILL.md must keep BOTH the guard reference and the prose
+// fallback, and the content transforms must not mangle either.
+describe("ce-code-review workflow cross-platform portability", () => {
+  const SKILL = `${WF_DIR.replace("/workflows", "")}/SKILL.md`
+
+  test("skill is not platform-filtered (no ce_platforms restriction)", async () => {
+    const content = await read(SKILL)
+    const { data } = parseFrontmatter(content)
+    // Unset means it ships to every target; [claude] would drop it from non-CC.
+    expect(data.ce_platforms).toBeUndefined()
+  })
+
+  test("guard + fallback survive the Codex content transform", async () => {
+    const content = await read(SKILL)
+    const out = transformContentForCodex(content)
+    expect(out).toContain("workflows/code-review-fanout.generated.js")
+    expect(out).toContain("Workflow tool")
+    expect(out).toContain("run the prose dispatch below") // fallback intact
+    // The co-located path must not be rewritten into a prompt/skill reference.
+    expect(out).not.toContain("/prompts:code-review-fanout")
+  })
+
+  test("guard + fallback survive the OpenCode content transform", async () => {
+    const content = await read(SKILL)
+    const out = transformSkillContentForOpenCode(content)
+    expect(out).toContain("workflows/code-review-fanout.generated.js")
+    expect(out).toContain("Workflow tool")
+    expect(out).toContain("run the prose dispatch below")
   })
 })
