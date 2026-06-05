@@ -67,3 +67,39 @@ describe("ce-resolve-pr-feedback scripts paginate GraphQL connections (issue #79
     expect(body).toMatch(PAGE_INFO_SELECTION)
   })
 })
+
+/**
+ * Repo resolution must anchor on the checkout's `origin` remote, not gh's
+ * configured default-repo.
+ *
+ * In a fork checkout, `gh repo view` returns the upstream parent (gh's default
+ * base repo), so a branch's PR number gets queried against the wrong repo --
+ * the script returns a foreign PR or empty results and the skill reports
+ * "0 unresolved" while real threads sit open. Both fetch scripts must derive
+ * OWNER/REPO from `git remote get-url origin` before ever falling back to
+ * `gh repo view`.
+ */
+describe("ce-resolve-pr-feedback scripts resolve repo from origin remote, not gh default-repo", () => {
+  for (const name of ["get-pr-comments", "get-thread-for-comment"]) {
+    test(`${name} prefers the origin remote over gh's default-repo`, () => {
+      const body = read(name)
+
+      const originIdx = body.indexOf("git remote get-url origin")
+      expect(
+        originIdx,
+        `${name} must resolve OWNER/REPO from \`git remote get-url origin\` (the branch's push target / where its PR lives).`,
+      ).toBeGreaterThan(-1)
+
+      // Match the command invocation, not prose mentions of "gh repo view".
+      const ghViewIdx = body.indexOf("gh repo view --json")
+      // gh repo view may remain as a last-resort fallback, but only AFTER the
+      // origin-remote resolution -- never as the primary source.
+      if (ghViewIdx > -1) {
+        expect(
+          originIdx,
+          `${name} must attempt the origin remote before falling back to \`gh repo view\`; gh's default-repo points at the upstream parent in a fork.`,
+        ).toBeLessThan(ghViewIdx)
+      }
+    })
+  }
+})

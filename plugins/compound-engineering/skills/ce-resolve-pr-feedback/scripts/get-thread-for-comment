@@ -15,16 +15,33 @@ fi
 PR_NUMBER=$1
 COMMENT_NODE_ID=$2
 
+# Repo resolution. Precedence:
+#   1. Explicit OWNER/REPO argument (always wins).
+#   2. The current checkout's `origin` remote -- the repo this branch pushes to
+#      and where its PR lives.
+#   3. `gh repo view` as a last resort.
+# Do NOT resolve from `gh repo view` first: it returns gh's configured *default*
+# repo, which for a fork points at the upstream parent. A branch PR number then
+# gets queried against the wrong repo, silently returning a foreign PR or empty
+# results (the skill reports "0 unresolved" while real threads sit open).
 if [ -n "$3" ]; then
     OWNER=$(echo "$3" | cut -d/ -f1)
     REPO=$(echo "$3" | cut -d/ -f2)
 else
-    OWNER=$(gh repo view --json owner -q .owner.login 2>/dev/null)
-    REPO=$(gh repo view --json name -q .name 2>/dev/null)
+    origin_url=$(git remote get-url origin 2>/dev/null || true)
+    if [ -n "$origin_url" ]; then
+        slug=$(echo "$origin_url" | sed -E 's#^(git@[^:]+:|ssh://git@[^/]+/|https?://[^/]+/)##; s#\.git$##')
+        OWNER=$(echo "$slug" | cut -d/ -f1)
+        REPO=$(echo "$slug" | cut -d/ -f2)
+    fi
+    if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
+        OWNER=$(gh repo view --json owner -q .owner.login 2>/dev/null || true)
+        REPO=$(gh repo view --json name -q .name 2>/dev/null || true)
+    fi
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: Could not detect repository. Pass OWNER/REPO as third argument."
+    echo "Error: Could not detect repository. Pass OWNER/REPO as third argument." >&2
     exit 1
 fi
 
