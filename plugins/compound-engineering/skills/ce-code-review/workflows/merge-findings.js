@@ -249,8 +249,10 @@ function mergeFindings(returns) {
   primary = primary.filter((finding) => {
     if (!isDemotable(finding)) return true;
     const line = `${finding.file}:${finding.line} -- ${finding.title}`;
+    // A demoted cluster flagged by both weak personas belongs in both buckets —
+    // routing to only one loses the other persona's signal.
     if (finding.reviewers.includes("testing")) testing_gaps.push(line);
-    else residual_risks.push(line);
+    if (finding.reviewers.includes("maintainability")) residual_risks.push(line);
     demotedCount++;
     return false;
   });

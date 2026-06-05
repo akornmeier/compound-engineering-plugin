@@ -170,6 +170,19 @@ describe("mode-aware demotion", () => {
     expect(out.residual_risks).toContain("src/app.ts:7 -- naming nit")
   })
 
+  test("a finding flagged by both weak personas lands in both buckets", () => {
+    // testing + maintainability both flag the same loc -> clusters into one
+    // demotable finding; the signal must reach both soft buckets, not just one.
+    const out = mergeFindings([
+      ret("testing", [finding({ severity: "P3", autofix_class: "advisory", confidence: 50, line: 10, title: "weak both" })]),
+      ret("maintainability", [finding({ severity: "P3", autofix_class: "advisory", confidence: 50, line: 10, title: "weak both" })]),
+    ])
+    expect(out.findings).toHaveLength(0)
+    expect(out.testing_gaps).toContain("src/app.ts:10 -- weak both")
+    expect(out.residual_risks).toContain("src/app.ts:10 -- weak both")
+    expect(out.coverage.demoted).toBe(1)
+  })
+
   test("corroboration by another persona keeps it in primary", () => {
     const out = mergeFindings([
       ret("testing", [finding({ severity: "P2", autofix_class: "advisory", confidence: 75, line: 10 })]),

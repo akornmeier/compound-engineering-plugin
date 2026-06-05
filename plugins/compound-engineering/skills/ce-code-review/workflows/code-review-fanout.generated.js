@@ -11,13 +11,14 @@
 // SELF-CONTAINED ASSEMBLY: the Workflow runtime cannot import sibling files,
 // and it requires `export const meta` to be the first statement. The merge
 // logic therefore lives in the canonical, unit-tested module
-// `workflows/merge-findings.js`. Before invoking, the SKILL.md guard replaces
-// the merge-module marker below (the lone block-comment placeholder) with that
-// module's source minus its trailing `export` line, then passes the assembled
-// string as the Workflow
-// `script`. As authored here the file is a template, not independently runnable
-// (mergeFindings is undefined until assembly). A converter/sync test (U4)
-// asserts the assembled product parses and keeps meta first.
+// `workflows/merge-findings.js`. At BUILD TIME, scripts/build-review-workflow.ts
+// inlines that module (minus its trailing `export`) at the merge-module marker
+// below and writes the committed, runnable `code-review-fanout.generated.js`.
+// The SKILL.md mode:agent guard reads that generated artifact verbatim and
+// hands it to the Workflow tool — there is no runtime assembly. As authored
+// here this file is a TEMPLATE, not independently runnable (mergeFindings is
+// undefined until assembly); regenerate after editing it. A freshness test
+// asserts the committed generated file matches its sources and keeps meta first.
 //
 // Inputs (args), all produced by the orchestrator's Stages 1-3:
 //   run_id            string
@@ -293,8 +294,10 @@ function mergeFindings(returns) {
   primary = primary.filter((finding) => {
     if (!isDemotable(finding)) return true;
     const line = `${finding.file}:${finding.line} -- ${finding.title}`;
+    // A demoted cluster flagged by both weak personas belongs in both buckets —
+    // routing to only one loses the other persona's signal.
     if (finding.reviewers.includes("testing")) testing_gaps.push(line);
-    else residual_risks.push(line);
+    if (finding.reviewers.includes("maintainability")) residual_risks.push(line);
     demotedCount++;
     return false;
   });
@@ -344,6 +347,9 @@ if (typeof A === "string") {
   try {
     A = JSON.parse(A);
   } catch (e) {
+    // Don't fall through to all-defaults silently — that is the documented
+    // "empty review" failure mode. Log so a miswired caller is diagnosable.
+    log("args was a non-JSON string; running with defaults: " + (e && e.message ? e.message : String(e)));
     A = {};
   }
 }
