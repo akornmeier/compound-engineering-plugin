@@ -20,6 +20,10 @@ PR_NUMBER=$1
 # repo, which for a fork points at the upstream parent. A branch PR number then
 # gets queried against the wrong repo, silently returning a foreign PR or empty
 # results (the skill reports "0 unresolved" while real threads sit open).
+# Reset first so an exported OWNER/REPO from the caller's environment can't
+# leak in and skip the gh fallback when origin resolution fails below.
+OWNER=
+REPO=
 if [ -n "$2" ]; then
     OWNER=$(echo "$2" | cut -d/ -f1)
     REPO=$(echo "$2" | cut -d/ -f2)
