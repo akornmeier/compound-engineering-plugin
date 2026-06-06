@@ -300,6 +300,47 @@ describe("identity-level parity (mergeBack preserves linkage, not just counts)",
     expect(out.coverage.chains).toEqual({ roots: 1, dependents: 2 })
   })
 
+  test("reconciles inconsistent agent annotations: a dependent listed on a root but missing its depends_on back-pointer is NOT counted or nested (live-surfaced bug)", () => {
+    // The synthesis agent listed d2 in the root's dependents array but left d2's
+    // own depends_on null. Coverage (from depends_on) and rendering (from the
+    // dependents array) would drift. mergeBack must reconcile to one source of
+    // truth: rebuild dependents from depends_on back-pointers.
+    const out = mergeBack(
+      [
+        ann({ id: "root", section: "Problem Frame", severity: "P0", autofix_class: "manual", confidence: 100, dependents: ["d1", "d2"], _order: 0 }),
+        ann({ id: "d1", section: "Unit 2", severity: "P1", autofix_class: "manual", confidence: 75, depends_on: "root", _order: 1 }),
+        ann({ id: "d2", section: "Unit 9", severity: "P2", autofix_class: "manual", confidence: 75, depends_on: null, _order: 2 }),
+      ],
+      { residual_risks: [], deferred_questions: [] },
+    )
+    const root = out.decisions.find((x) => x.id === "root")
+    expect(root!.dependents).toEqual(["d1"]) // d2 dropped from the array (no back-pointer)
+    expect(out.coverage.chains).toEqual({ roots: 1, dependents: 1 })
+    // d2 still surfaces — at its own position, not nested, not lost.
+    expect(out.decisions.map((x) => x.id)).toContain("d2")
+    expect(out.decisions.find((x) => x.id === "d2")!.depends_on).toBeNull()
+  })
+
+  test("clears a depends_on whose root did not survive (e.g. protected-dropped) so it renders independently", () => {
+    const out = mergeBack(
+      [ann({ id: "orphan", autofix_class: "manual", confidence: 75, depends_on: "ghost-root" })],
+      { residual_risks: [], deferred_questions: [] },
+    )
+    expect(out.coverage.chains).toEqual({ roots: 0, dependents: 0 })
+    expect(out.decisions.find((x) => x.id === "orphan")!.depends_on).toBeNull()
+  })
+
+  test("caps dependents at 6 per root; overflow lose their link and render independently", () => {
+    const findings = [ann({ id: "root", severity: "P0", autofix_class: "manual", confidence: 100, _order: 0 })]
+    for (let i = 0; i < 8; i++) {
+      findings.push(ann({ id: "d" + i, section: "Unit " + i, severity: "P2", autofix_class: "manual", confidence: 75, depends_on: "root", _order: i + 1 }))
+    }
+    const out = mergeBack(findings, { residual_risks: [], deferred_questions: [] })
+    const root = out.decisions.find((x) => x.id === "root")
+    expect(root!.dependents).toHaveLength(6)
+    expect(out.coverage.chains).toEqual({ roots: 1, dependents: 6 })
+  })
+
   test("collapse parity: the surviving representative stays actionable; demoted variants (anchor 50) route to FYI", () => {
     // The synthesis agent keeps the strongest finding (variant_count records the
     // N-1 demoted) and demotes the rest to anchor 50. mergeBack must route the

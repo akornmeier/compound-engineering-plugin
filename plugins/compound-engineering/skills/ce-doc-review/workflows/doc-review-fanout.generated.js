@@ -380,6 +380,51 @@ function suppressRestatements(items, actionable) {
   return { kept, restated };
 }
 
+// 3.5c count invariant: coverage and rendering must derive from ONE source of
+// truth. The synthesis agent can emit inconsistent annotations (a finding listed
+// in a root's `dependents` array but with `depends_on: null`, or a depends_on
+// pointing at a finding the protected-artifact drop removed). Reconcile both
+// sides from the `depends_on` back-pointers (the dependent's own declaration):
+// rebuild each root's `dependents` from who actually points at it, clear dangling
+// /self depends_on, and apply the cap so the array and back-pointers agree by
+// construction. Mutates the findings in place; returns the coverage counts.
+function reconcileChains(findings) {
+  const byId = new Map(findings.map((f) => [f.id, f]));
+  // Clear depends_on that does not point at another surviving finding.
+  for (const f of findings) {
+    if (f.depends_on && (f.depends_on === f.id || !byId.has(f.depends_on))) f.depends_on = null;
+  }
+  // Group dependents by their declared root.
+  const back = new Map();
+  for (const f of findings) {
+    if (!f.depends_on) continue;
+    if (!back.has(f.depends_on)) back.set(f.depends_on, []);
+    back.get(f.depends_on).push(f);
+  }
+  // Cap per root (keep top 6 by severity, anchor desc, document order); the
+  // overflow lose their link and render independently.
+  for (const deps of back.values()) {
+    deps.sort(
+      (a, b) =>
+        SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
+        b.confidence - a.confidence ||
+        orderOf(a) - orderOf(b),
+    );
+    for (const extra of deps.slice(MAX_DEPENDENTS)) extra.depends_on = null;
+  }
+  // Rebuild every finding's dependents array from the (post-cap) back-pointers —
+  // the agent's original array is discarded so the two sides cannot drift.
+  let roots = 0;
+  let dependents = 0;
+  for (const f of findings) {
+    const live = (back.get(f.id) || []).filter((d) => d.depends_on === f.id);
+    f.dependents = live.map((d) => d.id);
+    if (f.dependents.length > 0) roots++;
+    if (f.depends_on) dependents++;
+  }
+  return { roots, dependents };
+}
+
 /**
  * Back bracket: consumes the synthesis agent's annotated finding set (final
  * anchors, recommended_action, autofix_class, depends_on/dependents already
@@ -394,6 +439,10 @@ function mergeBack(annotated, softBuckets) {
   const surviving = (Array.isArray(annotated) ? annotated : []).filter(
     (f) => !recommendsProtectedDeletion(f),
   );
+
+  // Reconcile depends_on/dependents into one consistent structure BEFORE routing
+  // so coverage counts and the rendered nesting cannot drift (3.5c invariant).
+  const chains = reconcileChains(surviving);
 
   const buckets = { applied: [], proposed_fixes: [], decisions: [], fyi: [] };
   for (const f of surviving) buckets[routeBucket(f)].push(f);
@@ -414,20 +463,6 @@ function mergeBack(annotated, softBuckets) {
   const residual = suppressRestatements(soft.residual_risks || [], actionable);
   const deferred = suppressRestatements(soft.deferred_questions || [], actionable);
 
-  // 3.5c Step 5 count invariant: dependents = findings with depends_on set;
-  // roots = findings with a non-empty dependents array. Computed on the
-  // surviving set so a protected-dropped root/dependent does not inflate counts.
-  const survivingIds = new Set(surviving.map((f) => f.id));
-  let roots = 0;
-  let dependents = 0;
-  for (const f of surviving) {
-    if (f.depends_on && survivingIds.has(f.depends_on)) dependents++;
-    if (Array.isArray(f.dependents)) {
-      const live = f.dependents.filter((id) => survivingIds.has(id)).slice(0, MAX_DEPENDENTS);
-      if (live.length > 0) roots++;
-    }
-  }
-
   return {
     applied: buckets.applied,
     proposed_fixes: buckets.proposed_fixes,
@@ -437,7 +472,7 @@ function mergeBack(annotated, softBuckets) {
     deferred_questions: deferred.kept,
     coverage: {
       restated: residual.restated + deferred.restated,
-      chains: { roots, dependents },
+      chains, // { roots, dependents } reconciled from a single source of truth
     },
   };
 }
