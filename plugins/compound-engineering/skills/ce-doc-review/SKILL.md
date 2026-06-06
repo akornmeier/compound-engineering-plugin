@@ -143,6 +143,36 @@ Add activated conditional personas:
 - `ce-scope-guardian-reviewer`
 - `ce-adversarial-document-reviewer`
 
+### Workflow acceleration (`mode:headless` only)
+
+In `mode:headless`, when the **Workflow tool is available** (Claude Code), run the persona fan-out + synthesis as a dynamic workflow instead of dispatching reviewers inline — the persona returns and the whole synthesis working memory stay in the workflow runtime, so only the final envelope enters this orchestrator's context (and the context of any caller — `ce-plan` Phase 5.3.8, `ce-brainstorm` Phase 4). This is also the **cross-platform guard**: on targets without the Workflow tool (Codex, Gemini, etc.) the fallback below is the unchanged, fully-functional review, so a converted skill never emits orchestration the target cannot run. **Default/interactive mode never uses this path** — it always runs the prose dispatch below and the interactive Phases 3-5.
+
+1. Read `workflows/doc-review-fanout.generated.js` (co-located; resolved relative to this skill).
+2. Generate a run id and create its artifact dir:
+   ```bash
+   RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ')
+   mkdir -p "/tmp/compound-engineering/ce-doc-review/$RUN_ID"
+   ```
+3. Invoke the Workflow tool with `script` set to that file's contents and `args`:
+   - `run_id` — from step 2; `document_path` — the document under review; `document_type` — `requirements` or `plan` from Phase 1 classification; `origin_path` — the document's `origin:` frontmatter value, or `none` (extracted in Phase 1).
+   - `personas` — the resolved reviewer list (Build Agent List above) as `{ name, agentType, model }`, where `name` is the short persona name, `agentType` is the **plugin-namespaced** `compound-engineering:ce-<name>-reviewer` — the workflow `agent()` registry does **not** resolve the bare `ce-<name>` form, and a bad type is swallowed into an empty review — and `model` matches the persona's declared tier (omit `model` for `inherit` personas so they inherit the session model):
+
+     | name | agentType | model |
+     |------|-----------|-------|
+     | `coherence` | `compound-engineering:ce-coherence-reviewer` | `haiku` |
+     | `feasibility` | `compound-engineering:ce-feasibility-reviewer` | _(omit — inherit)_ |
+     | `product-lens` | `compound-engineering:ce-product-lens-reviewer` | _(omit — inherit)_ |
+     | `design-lens` | `compound-engineering:ce-design-lens-reviewer` | `sonnet` |
+     | `security-lens` | `compound-engineering:ce-security-lens-reviewer` | `sonnet` |
+     | `scope-guardian` | `compound-engineering:ce-scope-guardian-reviewer` | `sonnet` |
+     | `adversarial` | `compound-engineering:ce-adversarial-document-reviewer` | _(omit — inherit)_ |
+
+4. The workflow returns the `mode:headless` envelope — it has already run the fan-out, the synthesis agent (the `3.3b-3.6` judgment middle), and the deterministic merge. It is **report-only**: it never mutates the document. The envelope carries `fixes_to_apply` (anchor-`100` `safe_auto`), `proposed_fixes`, `decisions` (each with `depends_on`/`dependents`), `fyi`, `residual_risks`, `deferred_questions`, `coverage` (`dropped`/`restated`/`chains`/`dropped_agents`/`malformed_agents`), `reviewers`, `run_id`, `artifact_path`, and `status`.
+5. **Apply** the returned `fixes_to_apply` to the document with the platform's edit tool — these are the anchor-`100` `safe_auto` fixes (the sole application step; the workflow never applies). Then **render** the Phase 4 headless text envelope (see `references/synthesis-and-presentation.md` — "Headless mode") from the returned data: list applied fixes, then Proposed fixes, Decisions (nesting each root's `dependents` as an indented sub-block, never re-listed at their own position), FYI observations, Residual concerns, Deferred questions, and the `Dropped:` / `Chains:` / `Restated:` Coverage footnotes when non-zero. End with `Review complete`. Honor the **protected-artifact** rule and the user-facing vocabulary rule.
+6. Do **not** re-run the Phase 3-5 synthesis on the envelope, do **not** fire any interactive question, and do **not** run R29/R30 (the workflow is single-round with an empty primer). If `status` is `degraded`, surface the failed/malformed reviewers in Coverage but still render what returned.
+
+When the Workflow tool is unavailable, ignore this subsection and run the prose dispatch below.
+
 ### Dispatch
 
 Dispatch agents using **bounded parallelism** with the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex, `subagent` in Pi via the `pi-subagents` extension). Omit the `mode` parameter so the user's configured permission settings apply. Respect the current harness's active-subagent limit: queue selected reviewers, dispatch only as many as the harness accepts, and fill freed slots as reviewers complete. Treat active-agent/thread/concurrency-limit spawn errors as backpressure, not reviewer failure: leave the reviewer queued and retry after a slot frees. Record a reviewer as failed only after a successful dispatch times out/fails, or when dispatch fails for a non-capacity reason.
