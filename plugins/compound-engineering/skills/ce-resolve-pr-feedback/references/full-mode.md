@@ -9,6 +9,8 @@ If no PR number was provided, detect from the current branch:
 gh pr view --json number -q .number
 ```
 
+`get-pr-comments` resolves the repo from the checkout's `origin` remote — the repo this branch pushes to and where its PR lives — **not** `gh`'s configured default-repo (which points at the upstream parent in a fork checkout, so the same PR number resolves to a different repo and the skill reports "0 unresolved" while real threads sit open). Pass an explicit `OWNER/REPO` second argument only when targeting a PR in a different repo than `origin`.
+
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments):
 
 ```bash
@@ -23,10 +25,10 @@ Returns a JSON object with three keys:
 | `pr_comments` | Top-level PR conversation comments (excludes PR author) | No | No |
 | `review_bodies` | Review submission bodies with non-empty text (excludes PR author) | No | No |
 
-If the script fails, fall back to:
+If the script fails, fall back to (anchor every call to the same `OWNER/REPO` the script resolved, so a fork's default-repo can't redirect the query):
 ```bash
-gh pr view PR_NUMBER --json reviews,comments
-gh api repos/{owner}/{repo}/pulls/PR_NUMBER/comments
+gh pr view PR_NUMBER -R OWNER/REPO --json reviews,comments
+gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments
 ```
 
 ## 2. Triage: Separate New from Pending
