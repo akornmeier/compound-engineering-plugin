@@ -38,8 +38,16 @@ const MAX_DEPENDENTS = 6;
 // Protected-artifact directories (synthesis "Protected Artifacts").
 const PROTECTED_DIRS = ["docs/brainstorms/", "docs/plans/", "docs/solutions/"];
 
+// 3.3 normalization: lowercase, strip punctuation, collapse whitespace. Replace
+// punctuation with a space (not nothing) so "Unit-4" and "Unit 4" fingerprint
+// the same; otherwise punctuation-only differences would fail to dedup and would
+// produce divergent stable ids.
 function normalize(value) {
-  return String(value).trim().toLowerCase().replace(/\s+/g, " ");
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function hasFix(finding) {
@@ -319,14 +327,29 @@ function sharesTwoWords(itemWords, findingWords) {
   for (const w of itemWords) if (findingWords.has(w)) shared++;
   return shared >= 2;
 }
-// `actionableWordSets` is precomputed once by the caller (the finding word-sets
-// are reused across every residual and deferred item — recomputing them per item
-// is O(A*(R+D)) tokenization).
-function suppressRestatements(items, actionableWordSets) {
+function sharesAnyWord(itemWords, words) {
+  for (const w of words) if (itemWords.has(w)) return true;
+  return false;
+}
+// 3.9 restatement suppression. `actionable` entries are precomputed once by the
+// caller (`{ words, sectionWords }`) — the finding word-sets are reused across
+// every residual/deferred item, so recomputing them per item would be
+// O(A*(R+D)) tokenization. `questionForm` selects the spec branch:
+//   - residual statements (questionForm=false): spec case (a) — require BOTH a
+//     section-name overlap AND substance overlap, so an item that merely shares
+//     generic terms with an UNRELATED section is not dropped.
+//   - deferred questions (questionForm=true): spec case (b) — a question whose
+//     substance matches an actionable finding is a restatement regardless of
+//     section.
+function suppressRestatements(items, actionable, questionForm) {
   let restated = 0;
   const kept = items.filter((item) => {
     const itemWords = significantWords(item);
-    const isRestatement = actionableWordSets.some((fw) => sharesTwoWords(itemWords, fw));
+    const isRestatement = actionable.some((f) => {
+      if (!sharesTwoWords(itemWords, f.words)) return false;
+      if (questionForm) return true;
+      return sharesAnyWord(itemWords, f.sectionWords);
+    });
     if (isRestatement) {
       restated++;
       return false;
@@ -405,7 +428,11 @@ function mergeBack(annotated, softBuckets) {
   // that wrongly demotes/keeps a finding below 50 must not slip past — the
   // "anchors 0/25 never surface" invariant is enforced on both sides of the agent.
   const surviving = (Array.isArray(annotated) ? annotated : []).filter(
-    (f) => !DROPPED_ANCHORS.has(f.confidence) && !recommendsProtectedDeletion(f),
+    (f) =>
+      f &&
+      typeof f === "object" &&
+      !DROPPED_ANCHORS.has(f.confidence) &&
+      !recommendsProtectedDeletion(f),
   );
 
   // Reconcile depends_on/dependents into one consistent structure BEFORE routing
@@ -428,12 +455,13 @@ function mergeBack(annotated, softBuckets) {
     ...buckets.decisions,
     ...buckets.fyi,
   ];
-  const actionableWordSets = actionable.map((f) =>
-    significantWords(f.title + " " + f.why_it_matters),
-  );
+  const actionableEntries = actionable.map((f) => ({
+    words: significantWords(f.title + " " + f.why_it_matters),
+    sectionWords: significantWords(f.section),
+  }));
   const soft = softBuckets || { residual_risks: [], deferred_questions: [] };
-  const residual = suppressRestatements(soft.residual_risks || [], actionableWordSets);
-  const deferred = suppressRestatements(soft.deferred_questions || [], actionableWordSets);
+  const residual = suppressRestatements(soft.residual_risks || [], actionableEntries, false);
+  const deferred = suppressRestatements(soft.deferred_questions || [], actionableEntries, true);
 
   return {
     applied: buckets.applied,

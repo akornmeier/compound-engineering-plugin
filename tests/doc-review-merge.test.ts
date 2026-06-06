@@ -79,6 +79,15 @@ describe("normalize", () => {
     expect(normalize("  Unit 4  ")).toBe("unit 4")
     expect(normalize("Deploy   ordering\tunspecified")).toBe("deploy ordering unspecified")
   })
+
+  test("strips punctuation so punctuation-only differences fingerprint the same (3.3 spec)", () => {
+    // "Unit-4" and "Unit 4" must produce the same fingerprint/id, else they
+    // fail to dedup. Punctuation becomes a space, then whitespace collapses.
+    expect(normalize("Unit-4")).toBe("unit 4")
+    expect(normalize("Unit 4")).toBe("unit 4")
+    expect(normalize("Deploy ordering, unspecified!")).toBe("deploy ordering unspecified")
+    expect(normalize("AliasedCommand: overkill?")).toBe("aliasedcommand overkill")
+  })
 })
 
 // --- 3.1 Validate ------------------------------------------------------------
@@ -332,6 +341,32 @@ describe("mergeBack 3.9 suppress restatements", () => {
       [annotated({ section: "Unit 4", title: "Deploy ordering", why_it_matters: "deploy recipe missing" })],
       {
         residual_risks: ["Rollout cadence across regions is unspecified and may stagger badly."],
+        deferred_questions: [],
+      },
+    )
+    expect(out.residual_risks).toHaveLength(1)
+    expect(out.coverage.restated).toBe(0)
+  })
+
+  test("a residual that names the finding's section AND overlaps substance is dropped (spec case a)", () => {
+    const out = mergeBack(
+      [annotated({ section: "Migration", title: "Rollback strategy missing", why_it_matters: "the rollback procedure is undefined" })],
+      {
+        residual_risks: ["The Migration rollback procedure remains undefined for failure cases."],
+        deferred_questions: [],
+      },
+    )
+    expect(out.residual_risks).toHaveLength(0)
+    expect(out.coverage.restated).toBe(1)
+  })
+
+  test("a residual sharing only generic substance with an UNRELATED section is kept (the over-drop the section check prevents)", () => {
+    const out = mergeBack(
+      [annotated({ section: "Unit 2", title: "Rollback strategy missing", why_it_matters: "the rollback procedure is undefined" })],
+      {
+        // Shares "rollback"/"procedure" substance but never names Unit 2 — a
+        // different concern in a different section, must not be suppressed.
+        residual_risks: ["The disaster-recovery rollback procedure for the datacenter is undefined."],
         deferred_questions: [],
       },
     )

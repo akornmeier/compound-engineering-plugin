@@ -168,7 +168,7 @@ function personaPrompt(p) {
     "suppress anything you cannot honestly anchor at 50 or higher.",
     "",
     "Write your FULL analysis (every finding with why_it_matters and evidence) to",
-    ARTIFACT_DIR + "/" + p.name + ".json.",
+    "this exact path (no trailing punctuation): " + ARTIFACT_DIR + "/" + p.name + ".json",
     "Return the FULL findings object matching the schema (keep why_it_matters and",
     "evidence — synthesis needs them). Set reviewer to \"" + p.name + "\".",
     "Return an empty findings array if nothing qualifies.",
