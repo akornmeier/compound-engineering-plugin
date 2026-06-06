@@ -88,7 +88,7 @@ describe("mergeFront 3.1 validate", () => {
     const out = mergeFront([
       ret("coherence", [
         finding({ confidence: 100, title: "ok" }),
-        { ...finding({ title: "bad", section: "Summary" }), confidence: 72 } as unknown as Finding,
+        { ...finding({ title: "bad", section: "Summary" }), confidence: 0.73 } as unknown as Finding,
       ]),
     ])
     expect(out.findings.map((f) => f.title)).toEqual(["ok"])
@@ -405,11 +405,15 @@ describe("mergeBack chains coverage", () => {
 
 describe("mergeBack determinism", () => {
   test("identical input yields byte-identical output across runs", () => {
-    const input = [
-      annotated({ id: "a", severity: "P0", autofix_class: "manual", confidence: 100, _order: 0 }),
-      annotated({ id: "b", severity: "P1", autofix_class: "gated_auto", confidence: 75, _order: 1 }),
+    // mergeBack mutates its input (reconcileChains rewrites depends_on/dependents),
+    // so build a FRESH input for each call to test true determinism, not idempotency.
+    const makeInput = () => [
+      annotated({ id: "a", severity: "P0", autofix_class: "manual", confidence: 100, dependents: ["b"], _order: 0 }),
+      annotated({ id: "b", severity: "P1", autofix_class: "gated_auto", confidence: 75, depends_on: "a", _order: 1 }),
     ]
-    const soft = { residual_risks: ["r"], deferred_questions: ["q"] }
-    expect(JSON.stringify(mergeBack(input, soft))).toBe(JSON.stringify(mergeBack(input, soft)))
+    const makeSoft = () => ({ residual_risks: ["r"], deferred_questions: ["q"] })
+    expect(JSON.stringify(mergeBack(makeInput(), makeSoft()))).toBe(
+      JSON.stringify(mergeBack(makeInput(), makeSoft())),
+    )
   })
 })

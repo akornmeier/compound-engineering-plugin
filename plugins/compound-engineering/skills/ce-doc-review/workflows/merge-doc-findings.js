@@ -25,6 +25,8 @@
 // explicit, test-pinned choice marked [INTERP].
 
 const SEVERITY_RANK = { P0: 3, P1: 2, P2: 1, P3: 0 };
+// [INTERP] merge conservatism — the more judgment / less silent apply, the higher.
+const AUTOFIX_CONSERVATISM = { manual: 2, gated_auto: 1, safe_auto: 0 };
 const VALID_SEVERITY = new Set(["P0", "P1", "P2", "P3"]);
 const VALID_FINDING_TYPE = new Set(["error", "omission"]);
 const VALID_AUTOFIX = new Set(["safe_auto", "gated_auto", "manual"]);
@@ -169,8 +171,6 @@ function mergeCluster(members) {
   };
 }
 
-const AUTOFIX_CONSERVATISM = { manual: 2, gated_auto: 1, safe_auto: 0 };
-
 /**
  * Front bracket: validate -> anchor gate -> cross-persona dedup.
  * Returns the deduped finding set the synthesis agent consumes, the soft
@@ -314,17 +314,19 @@ function significantWords(text) {
       .filter((w) => w.length >= 4 && !STOPWORDS.has(w)),
   );
 }
-function overlaps(itemWords, finding) {
-  const findingWords = significantWords(finding.title + " " + finding.why_it_matters);
+function sharesTwoWords(itemWords, findingWords) {
   let shared = 0;
   for (const w of itemWords) if (findingWords.has(w)) shared++;
   return shared >= 2;
 }
-function suppressRestatements(items, actionable) {
+// `actionableWordSets` is precomputed once by the caller (the finding word-sets
+// are reused across every residual and deferred item — recomputing them per item
+// is O(A*(R+D)) tokenization).
+function suppressRestatements(items, actionableWordSets) {
   let restated = 0;
   const kept = items.filter((item) => {
     const itemWords = significantWords(item);
-    const isRestatement = actionable.some((f) => overlaps(itemWords, f));
+    const isRestatement = actionableWordSets.some((fw) => sharesTwoWords(itemWords, fw));
     if (isRestatement) {
       restated++;
       return false;
@@ -347,6 +349,15 @@ function reconcileChains(findings) {
   // Clear depends_on that does not point at another surviving finding.
   for (const f of findings) {
     if (f.depends_on && (f.depends_on === f.id || !byId.has(f.depends_on))) f.depends_on = null;
+  }
+  // Enforce the one-level model: a dependent cannot also be a root. If a
+  // finding's declared root is itself a dependent (depth-2+ chain), drop the
+  // link so the finding renders independently — the walk-through cascades a
+  // single root decision over one level, not a tree. Snapshot first so the
+  // decision is order-independent.
+  const isDependent = new Set(findings.filter((f) => f.depends_on).map((f) => f.id));
+  for (const f of findings) {
+    if (f.depends_on && isDependent.has(f.depends_on)) f.depends_on = null;
   }
   // Group dependents by their declared root.
   const back = new Map();
@@ -390,8 +401,11 @@ function reconcileChains(findings) {
  * @param {{residual_risks:Array<string>, deferred_questions:Array<string>}} softBuckets
  */
 function mergeBack(annotated, softBuckets) {
+  // Defensive 3.2 re-gate: SYNTHESIS_SCHEMA permits confidence 0/25, so an agent
+  // that wrongly demotes/keeps a finding below 50 must not slip past — the
+  // "anchors 0/25 never surface" invariant is enforced on both sides of the agent.
   const surviving = (Array.isArray(annotated) ? annotated : []).filter(
-    (f) => !recommendsProtectedDeletion(f),
+    (f) => !DROPPED_ANCHORS.has(f.confidence) && !recommendsProtectedDeletion(f),
   );
 
   // Reconcile depends_on/dependents into one consistent structure BEFORE routing
@@ -406,16 +420,20 @@ function mergeBack(annotated, softBuckets) {
   buckets.decisions = sortFindings(buckets.decisions);
   buckets.fyi = sortFindings(buckets.fyi);
 
-  // 3.9 runs against the finalized actionable + FYI set.
+  // 3.9 runs against the finalized actionable + FYI set. Tokenize each finding
+  // once and reuse the word-sets across every residual/deferred item.
   const actionable = [
     ...buckets.applied,
     ...buckets.proposed_fixes,
     ...buckets.decisions,
     ...buckets.fyi,
   ];
+  const actionableWordSets = actionable.map((f) =>
+    significantWords(f.title + " " + f.why_it_matters),
+  );
   const soft = softBuckets || { residual_risks: [], deferred_questions: [] };
-  const residual = suppressRestatements(soft.residual_risks || [], actionable);
-  const deferred = suppressRestatements(soft.deferred_questions || [], actionable);
+  const residual = suppressRestatements(soft.residual_risks || [], actionableWordSets);
+  const deferred = suppressRestatements(soft.deferred_questions || [], actionableWordSets);
 
   return {
     applied: buckets.applied,

@@ -200,9 +200,13 @@ describe("deterministic brackets — variance = 0", () => {
   })
 
   test("mergeBack is byte-identical across repeated runs on fixed input", () => {
-    const input = [ann({ id: "a", _order: 0 }), ann({ id: "b", _order: 1, severity: "P0" })]
-    const soft = { residual_risks: ["r"], deferred_questions: ["q"] }
-    expect(JSON.stringify(mergeBack(input, soft))).toBe(JSON.stringify(mergeBack(input, soft)))
+    // Fresh input per call — mergeBack mutates depends_on/dependents in place, so
+    // reusing one array would test idempotency, not determinism.
+    const makeInput = () => [ann({ id: "a", _order: 0 }), ann({ id: "b", _order: 1, severity: "P0" })]
+    const makeSoft = () => ({ residual_risks: ["r"], deferred_questions: ["q"] })
+    expect(JSON.stringify(mergeBack(makeInput(), makeSoft()))).toBe(
+      JSON.stringify(mergeBack(makeInput(), makeSoft())),
+    )
   })
 })
 
@@ -319,6 +323,37 @@ describe("identity-level parity (mergeBack preserves linkage, not just counts)",
     // d2 still surfaces — at its own position, not nested, not lost.
     expect(out.decisions.map((x) => x.id)).toContain("d2")
     expect(out.decisions.find((x) => x.id === "d2")!.depends_on).toBeNull()
+  })
+
+  test("defensively re-gates anchors 0/25 the synthesis agent could wrongly emit (never surface as actionable)", () => {
+    // SYNTHESIS_SCHEMA permits confidence 0/25; an agent that wrongly keeps a
+    // finding there must not slip past the 3.2 'anchors 0/25 never surface' rule.
+    const out = mergeBack(
+      [
+        ann({ id: "low0", confidence: 0, autofix_class: "gated_auto", suggested_fix: "x" }),
+        ann({ id: "low25", confidence: 25, autofix_class: "manual" }),
+        ann({ id: "keep", confidence: 75, autofix_class: "manual" }),
+      ],
+      { residual_risks: [], deferred_questions: [] },
+    )
+    const all = [...out.applied, ...out.proposed_fixes, ...out.decisions, ...out.fyi].map((x) => x.id)
+    expect(all).toEqual(["keep"])
+  })
+
+  test("enforces the one-level chain model: a depth-2 chain (root<-mid<-leaf) flattens, no double-count", () => {
+    const out = mergeBack(
+      [
+        ann({ id: "root", severity: "P0", autofix_class: "manual", confidence: 100, dependents: ["mid"], _order: 0 }),
+        ann({ id: "mid", severity: "P1", autofix_class: "manual", confidence: 75, depends_on: "root", dependents: ["leaf"], _order: 1 }),
+        ann({ id: "leaf", severity: "P2", autofix_class: "manual", confidence: 75, depends_on: "mid", _order: 2 }),
+      ],
+      { residual_risks: [], deferred_questions: [] },
+    )
+    // mid stays a dependent of root; leaf detaches (its root was itself a dependent).
+    expect(out.coverage.chains).toEqual({ roots: 1, dependents: 1 })
+    expect(out.decisions.find((x) => x.id === "root")!.dependents).toEqual(["mid"])
+    expect(out.decisions.find((x) => x.id === "mid")!.dependents).toEqual([])
+    expect(out.decisions.find((x) => x.id === "leaf")!.depends_on).toBeNull()
   })
 
   test("clears a depends_on whose root did not survive (e.g. protected-dropped) so it renders independently", () => {

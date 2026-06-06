@@ -280,7 +280,10 @@ function applyAnnotations(frontFindings, synthFindings) {
       ...f,
       confidence: VALID_OK(a.confidence) ? a.confidence : f.confidence,
       autofix_class: a.autofix_class || f.autofix_class,
-      suggested_fix: a.suggested_fix !== undefined ? a.suggested_fix : f.suggested_fix,
+      // Coalesce, do not overwrite: an agent returning an explicit null must not
+      // erase a front-supplied fix (which would demote a safe_auto@100 out of the
+      // apply bucket). The agent may still REPLACE it with a new non-null fix.
+      suggested_fix: a.suggested_fix != null ? a.suggested_fix : f.suggested_fix,
       recommended_action: a.recommended_action || defaultAction(f),
       depends_on: typeof a.depends_on === "string" ? a.depends_on : null,
       dependents: Array.isArray(a.dependents) ? a.dependents : [],
