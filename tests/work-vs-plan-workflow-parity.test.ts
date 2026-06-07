@@ -1,10 +1,15 @@
-import { readFile } from "fs/promises"
+import { mkdtemp, readFile, rm, stat } from "fs/promises"
+import { tmpdir } from "os"
 import path from "path"
-import { describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import {
   assembleWorkVsPlanWorkflow,
   GENERATED_PATH,
 } from "../scripts/build-work-vs-plan-workflow"
+import { transformContentForCodex } from "../src/utils/codex-content"
+import { transformSkillContentForOpenCode } from "../src/converters/claude-to-opencode"
+import { parseFrontmatter } from "../src/utils/frontmatter"
+import { copySkillDir } from "../src/utils/files"
 
 // U3 + U6 — build invariants and cross-platform portability for the
 // ce-verify-work dynamic workflow.
@@ -17,6 +22,7 @@ import {
 // (U6, below) that the converted skill ships intact with its fallback.
 
 const SKILL_DIR = "plugins/compound-engineering/skills/ce-verify-work"
+const SKILL = `${SKILL_DIR}/SKILL.md`
 const WF_DIR = `${SKILL_DIR}/workflows`
 
 async function read(rel: string): Promise<string> {
@@ -140,5 +146,75 @@ describe("ce-verify-work workflow live-boundary contracts", () => {
   })
 })
 
-// U6 extends this file with cross-platform portability + converter-copy
-// assertions once SKILL.md exists (it reads SKILL.md, which lands in U4).
+// ---------------------------------------------------------------------------
+// U6 — cross-platform portability + converter-copy
+// ---------------------------------------------------------------------------
+
+describe("ce-verify-work workflow cross-platform portability", () => {
+  test("skill is not platform-filtered (no ce_platforms restriction)", async () => {
+    const content = await read(SKILL)
+    const { data } = parseFrontmatter(content)
+    // Unset means it ships to every target; [claude] would drop it from non-CC.
+    expect(data.ce_platforms).toBeUndefined()
+  })
+
+  test("guard + fallback survive the Codex content transform", async () => {
+    const out = transformContentForCodex(await read(SKILL))
+    expect(out).toContain("workflows/work-vs-plan-fanout.generated.js")
+    expect(out).toContain("Workflow tool")
+    expect(out).toContain("run the prose dispatch below") // fallback intact
+    // The co-located path must not be rewritten into a prompt/skill reference.
+    expect(out).not.toContain("/prompts:work-vs-plan-fanout")
+  })
+
+  test("guard + fallback survive the OpenCode content transform", async () => {
+    const out = transformSkillContentForOpenCode(await read(SKILL))
+    expect(out).toContain("workflows/work-vs-plan-fanout.generated.js")
+    expect(out).toContain("Workflow tool")
+    expect(out).toContain("run the prose dispatch below")
+  })
+
+  test("scriptPath resolution transfers: the guard reads the generated file and passes its contents as the Workflow script", async () => {
+    const content = await read(SKILL)
+    // The mechanism the code-review/doc-review conversions resolved: read the
+    // co-located generated artifact, hand its contents to the Workflow tool as
+    // `script` — not a skill-relative scriptPath (which would not resolve at
+    // install paths), and no unguarded ${CLAUDE_*}.
+    expect(content).toContain("Read `workflows/work-vs-plan-fanout.generated.js`")
+    expect(content).toMatch(/`script` set to that file's contents/)
+  })
+})
+
+describe("ce-verify-work isolated-unit copy carries the workflows/ subdir", () => {
+  let dest: string
+
+  beforeAll(async () => {
+    dest = await mkdtemp(path.join(tmpdir(), "verify-work-copy-"))
+    await copySkillDir(
+      path.join(process.cwd(), SKILL_DIR),
+      dest,
+      transformContentForCodex, // exercise the same transform a Codex install applies
+    )
+  })
+
+  afterAll(async () => {
+    await rm(dest, { recursive: true, force: true })
+  })
+
+  test("copies the committed generated artifact verbatim", async () => {
+    const copied = await readFile(path.join(dest, "workflows/work-vs-plan-fanout.generated.js"), "utf8")
+    const source = await read(`${WF_DIR}/work-vs-plan-fanout.generated.js`)
+    expect(copied).toBe(source) // non-markdown files copied untouched
+  })
+
+  test("copies the pure deterministic module verbatim", async () => {
+    const f = await stat(path.join(dest, "workflows/drift-rollup.js"))
+    expect(f.isFile()).toBe(true)
+  })
+
+  test("the copied SKILL.md keeps the prose fallback self-contained", async () => {
+    const skill = await readFile(path.join(dest, "SKILL.md"), "utf8")
+    expect(skill).toContain("run the prose dispatch below")
+    expect(skill).toContain("references/verdict-rubric.md")
+  })
+})
