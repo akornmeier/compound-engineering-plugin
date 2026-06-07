@@ -3,9 +3,13 @@ date: 2026-06-04
 topic: dynamic-workflows-opportunity-map
 type: opportunity-map
 origin: docs/brainstorms/2026-06-04-dynamic-workflows-opportunity-map-requirements.md
+revised: 2026-06-07
 related:
   - docs/plans/2026-06-04-dynamic-workflows-opportunity-map-plan.md
   - docs/plans/2026-06-04-001-feat-ce-code-review-workflow-fanout-plan.md
+  - docs/plans/2026-06-06-001-feat-ce-doc-review-workflow-fanout-plan.md
+  - docs/adr/0001-per-metric-signal-gate.md
+  - CONTEXT.md
 ---
 
 # Dynamic Workflows: Opportunity Map + Selection Criteria
@@ -18,8 +22,8 @@ It is organized around the **compounding memory loop** as its spine — **Captur
 
 **Three things to know before reading:**
 
-1. **First conversion is already done.** `ce-code-review`'s report-only `mode:agent` fan-out shipped as a dynamic workflow (PR #2). It is the worked example this map points at as live proof — not a proposal. See §3 and the Review-branch rows.
-2. **First conversion != highest leverage.** The recommended *first* conversion (de-risking, pattern-proving) is `ce-code-review`'s sub-step. The highest-*leverage* candidate is high-recall **Retrieve** (R9) — but it is **threshold-gated** and ranked below present-pain candidates until its trigger fires. These are two distinct answers; §6 keeps them separate.
+1. **Phase 0 (pattern-proving) is complete.** Two conversions landed — `ce-code-review`'s report-only `mode:agent` fan-out (PR #2) and `ce-doc-review` (PR #6, which successfully reused the template). They are live proof, not proposals. Per [ADR 0001](docs/adr/0001-per-metric-signal-gate.md) they are justified by **de-risking and proving the pattern**, *not* by a STRATEGY metric — the earlier "Rework/churn" tag on them was post-hoc. See §3 and §6 Phase 0.
+2. **Sequencing is three per-metric tracks, not one queue.** A 2026-06-07 grilling pass found the original single linear queue was the structural cause of a "march on asserted pain." Work is now **Track A — Rework/churn** (the only one with a hard **Signal gate**, fed by a drift-rate **probe**), **Track B — Learnings reuse** (qualitative; Retrieve carries a **timing trigger**), and **Track C — Loop adoption** (qualitative). The three senses of "gate" (Candidacy / Signal / Timing) are defined in [CONTEXT.md](CONTEXT.md). §6 has the tracks.
 3. **The baseline is headless/agent mode, not interactive mode.** Several candidates (`ce-compound`, `ce-compound-refresh`, `ce-code-review`, `ce-doc-review`) already fan out non-interactively and stage intermediate output to disk. A conversion's value is the **marginal gain over that existing baseline**, not over interactive mode. Rows assess the increment, not the absolute.
 
 **Scope note:** This document records downstream conversion-time questions; it does not resolve them. The conversions themselves are out of scope here — they are downstream `/ce-plan` + execution work.
@@ -84,7 +88,7 @@ The classification vocabulary. Each candidate names the pattern(s) it maps to �
 
 ---
 
-## 4. The spine
+## 4. The spine — the loop-position axis (classification + dependency)
 
 ```
    THE COMPOUNDING LOOP
@@ -110,10 +114,12 @@ The classification vocabulary. Each candidate names the pattern(s) it maps to �
    MAINTAIN  <--------  UNDERSTAND
    ce-compound-refresh  CONCEPTS.md refresh
 
-   (*) = first conversion, landed (PR #2)
+   (*) = Phase 0 pattern-proving, landed: ce-code-review (PR #2), ce-doc-review (PR #6)
 ```
 
-The loop earns the spine because it is the literal compounding mechanism, and two of three STRATEGY metrics (Loop adoption, Learnings reuse) live in it. The review/optimization candidates are a **branch**, not a peer section: they read prior learnings (Retrieve) and emit new ones (Capture).
+**Two orthogonal axes.** This spine is the **loop-position axis** — *where* each candidate sits in the compounding loop (Capture / Retrieve / Maintain / Understand), plus the **branch** that consumes Retrieve and produces Capture. It is the **classification and dependency** layer: it defines what "loop-internal" means for R14's reject-test (§7) and expresses the consume/produce relationships the track view cannot. **Prioritization is a *different* axis** — the per-metric tracks (§6) decide sequence and gating; loop-position does not. The two cross-cut: Track B collapses Capture+Retrieve+Maintain into one metric, and the branch fragments across Phase 0, Track A, and Track C.
+
+**Highest-leverage domain ≠ goes first.** The memory loop is the highest-*leverage* domain — it is the literal compounding mechanism, and two of three STRATEGY metrics (Loop adoption, Learnings reuse) live in it. But exactly as Retrieve is highest-leverage yet deferred behind its timing trigger, the loop's centrality does **not** put its candidates first: Track A (Rework/churn) goes first because its probe **produces the missing signal**, not because it outranks the loop. Leverage and sequence are separate axes.
 
 ---
 
@@ -136,7 +142,7 @@ Row schema: **Loop phase | Skill (path) | Pattern(s) | Criteria assessment (R2, 
 - **Source:** `plugins/compound-engineering/agents/ce-learnings-researcher.md`
 - **Pattern(s):** multi-modal-sweep + adversarial-verification
 - **Criteria (R2):** *Gate:* passes — retrieval is non-interactive, called as an agent seam by `ce-plan`, `ce-code-review`, `ce-ideate`, `ce-optimize`. *Baseline:* today it is **grep-first, ~4 search angles** (title / tags / module / problem_type), executed as a pre-filter then sequential scoring/read; output is **prose** (≤5 findings), no JSON envelope, nothing staged. *Marginal gain:* multi-modal sweep adds 3–4 more parallel angles (symptom, root_cause, component, recency, semantic) **and** an adversarial-verify pass that confirms each surfaced learning is *still true against current code* — which the agent does **not** do today (it only passively flags conflicts "if you notice"). *Fan-out:* 6–8 parallel search angles + per-finding verification. *Structured output:* currently prose; a thin schema could wrap it without breaking the seam. *Rigor upside:* high — verification is the whole point at scale.
-- **Threshold trigger (carried verbatim from R9):** "rank this below present-pain candidates until an activation condition is crossed (an observed recall complaint, or the store exceeding a set size); its highest-leverage status is conditional on that trigger, since the recall problem is anticipatory at the current store size." The store is **31 files** in `docs/solutions/` today; grep-first has effectively perfect recall at this scale. Recall pain bites at hundreds of files.
+- **Timing trigger (not a Signal gate — see CONTEXT.md):** this gate is about *relevance*, not *evidence* — recall does not bite until the corpus is large, so convert only once it is worth doing. Concrete trigger: **store-size ≥ 150 files** (≈5× today's 31) **or** the first observed recall complaint, whichever fires first. Made real (not theater) by having **`ce-compound-refresh`'s corpus walk emit the `docs/solutions/` file count** (it already walks the whole set), so the count is actually read rather than relying on someone noticing. Grep-first has effectively perfect recall at 31 files; the trigger reclassifies cleanly because Track B is otherwise qualitative (it is a timing trigger, not the Rework/churn Signal gate).
 - **Impact:** Highest *leverage* (it sits behind a seam every consumer skill uses) but **deferred** — serves **Learnings reuse**, the metric most directly tied to retrieval quality. Its leverage and its risk come from the same fact: every consumer depends on it.
 - **Conversion mode:** sub-step **behind the existing read seam** (R14). The workflow enhances the agent's internal search+verify; callers keep consuming prose. Does **not** replace the seam.
 
@@ -216,8 +222,8 @@ Row schema: **Loop phase | Skill (path) | Pattern(s) | Criteria assessment (R2, 
 - **Relates to:** `ce-work` + plan/git state
 - **Pattern(s):** classify-and-act
 - **Criteria (R2):** *Gate:* passes — fully non-interactive classification pass. *Baseline:* none — there is no reliable automated read on done-vs-remaining today (the named pain). *Marginal gain:* entire value is the increment. *Fan-out:* one classify per plan task (done / remaining / drifted vs actual repo state). *Structured output:* per-task verdict table. *Rigor upside:* verify each task's claim against the repo, not the plan's checkboxes.
-- **Impact:** High — directly attacks "no reliable read on what's done vs remaining"; serves **Rework/churn** most directly of any candidate. The brainstorm flags this pain as the one a durable task-ledger redesign would also address (that redesign is out of scope; this workflow covers the pain insofar as classification does).
-- **Conversion mode:** wholesale net-new workflow.
+- **Impact:** High — but be precise about *what* it measures (see [ADR 0001](docs/adr/0001-per-metric-signal-gate.md)). Its output is a **drift rate** — the fraction of plan tasks claimed done but the repo diverged — which is a *rework proxy*, **not** the same as "done-vs-remaining" (that is mere progress). This is **Track A's probe**: it produces the Rework/churn **Signal gate**'s reading. The reading is **read-time-derived** by aggregating `ce-compound`-captured drift learnings + session history — never stored as a number (that would reopen the out-of-scope task-ledger). The gate's first read is an **absolute threshold T pre-committed before this runs** (drift ≥ T authorizes Track A; drift < T halts it). The durable task-ledger redesign the brainstorm flags is out of scope; this covers the pain insofar as classification does.
+- **Conversion mode:** wholesale net-new workflow. **Next conversion** (Track A0).
 
 **tournament plan drafter** — net-new
 - **Relates to:** `ce-plan`
@@ -228,37 +234,47 @@ Row schema: **Loop phase | Skill (path) | Pattern(s) | Criteria assessment (R2, 
 
 ---
 
-## 6. Prioritization & sequencing
+## 6. Sequencing — Phase 0 + three per-metric tracks
 
-Ranked by **impact × fan-out × rigor, gated by R1**, with marginal-over-baseline applied. Two distinct answers per R7.
+> **Revised 2026-06-07** after a grilling pass ([ADR 0001](docs/adr/0001-per-metric-signal-gate.md), [CONTEXT.md](CONTEXT.md)). The original single linear queue (rank 0–11) was the structural cause of a "march on asserted pain": it ranked candidates across incommensurable metrics as if they competed for one slot, and it hid which gate governs which candidate. The work is **three metric-tracks**, each with its own gate, preceded by a completed **pattern-proving phase**. Tracks do not buy parallel execution (one maintainer, serial) — they buy a **legible gate** and make the march impossible by construction.
 
-### First conversion (recommended) — **`ce-code-review` report-only sub-step** [LANDED]
+### Phase 0 — pattern-proving (COMPLETE)
 
-The brainstorm's Key Decision, now shipped (PR #2). Chosen as first because it is the **most mature existing orchestration, clearest structured-output contract, lowest risk to prove the pattern** — not because it is the highest leverage. It is the template; §3 points at its code as live proof.
+`ce-code-review` (PR #2) and `ce-doc-review` (PR #6). Justified by **de-risking and proving the workflow pattern** — most mature orchestration, clearest output contract, successful template reuse on the second conversion — **not** by any STRATEGY metric. The earlier queue tagged these "Rework/churn"; that was post-hoc (ADR 0001). They sit **outside** the three tracks. The pattern is now proven; every subsequent conversion must be justified by its track.
 
-### Highest leverage — **high-recall Retrieve (R9)**, threshold-gated
+### Track A — Rework/churn (drift-gated)
 
-Highest leverage because it sits behind a read seam **every consumer skill uses** — improving it improves `ce-plan`, `ce-code-review`, `ce-ideate`, and `ce-optimize` at once. **But ranked below present-pain candidates** until its trigger fires (recall complaint observed, or store exceeds a set size; 31 files today). Its leverage and its risk share one root: universal dependence.
+The **only** track with a hard **Signal gate**. STRATEGY flags Rework/churn as "qualitative today, not yet instrumented," so this track must *produce its signal before it commits*.
 
-### Ranked conversion queue
+| Order | Candidate | Role | Gate |
+|---|---|---|---|
+| A0 | **work-vs-plan verification** | **Probe — next conversion.** Produces the gating signal: a **drift rate** (plan tasks claimed done but the repo diverged), read-time-derived from `ce-compound`-captured drift learnings + session history. A rework *proxy*, not "done-vs-remaining" progress. | it *is* the probe |
+| GATE | **Signal gate** | drift >= T -> Track A authorized; drift < T -> **halt Track A, reallocate** to B/C (qualitative work). **T pre-committed before A0 runs.** | — |
+| A1+ | ce-plan deepening sub-step; ce-resolve-pr-feedback; ce-optimize; ce-simplify-code | Authorized **only on drift >= T**, ordered by marginal-over-baseline (deepening > resolve-pr > optimize > simplify). | behind the gate |
 
-| Rank | Candidate | Phase | Why here (impact × fan-out × rigor, marginal) | STRATEGY metric |
-|---|---|---|---|---|
-| 0 | ce-code-review sub-step (*) | Review | Done. Pattern-proving template. | Rework/churn |
-| 1 | ce-doc-review | Review | Structurally identical to the template; headless envelope already exists -> lowest-risk next, high reuse. | Rework/churn |
-| 2 | batch-learning-capture | Capture | Attacks the capture bottleneck; `ce-compound` 3-agent fan-out already exists to multiply; write-time dedup is real rigor upside. | Learnings reuse |
-| 3 | work-vs-plan verification | Net-new | Attacks done-vs-remaining pain most directly; no baseline -> full marginal value. | Rework/churn |
-| 4 | corpus-audit (Maintain) | Maintain | Headless baseline + safety invariant already specified; corpus-wide loop-until-dry is the increment. | Learnings reuse |
-| 5 | ce-plan deepening sub-step | Review | Auto-mode baseline; 8-agent offload + missing adversarial-verify layer. | Rework/churn, Loop adoption |
-| 6 | ce-ideate evaluate sub-step | Review | Parallelize the currently-sequential Phase 3 evaluate; clean seam at Phase 6. | Loop adoption |
-| 7 | CONCEPTS.md refresh | Understand | Net-new, manual baseline -> full value, but lower frequency. | Loop adoption |
-| 8 | tournament plan drafter | Net-new | Speculative; high rigor upside, lower confidence. | Loop adoption |
-| 9 | ce-resolve-pr-feedback | Review | Real fan-out, but gate redesign (pre-commit split) is a prerequisite -> risk-adjusted down. | Rework/churn |
-| 10 | ce-optimize | Review | Strong skill, **low marginal gain** — already headless/loop/disk-staged. | Rework/churn |
-| 11 | ce-simplify-code | Review | Small fixed fan-out, no offload baseline, mutate-in-place is the core. | Rework/churn |
-| — | **high-recall Retrieve (R9)** | Retrieve | **Highest leverage, threshold-gated** — promote above rank 1 once the trigger fires. | Learnings reuse |
+ce-resolve-pr-feedback additionally needs a pre-commit gate redesign (§5.5); ce-optimize and ce-simplify-code are low-marginal-gain (already headless / small fixed fan-out).
 
-**Caveat (no silent caps):** every impact rating is a qualitative proxy — `STRATEGY.md` confirms Rework/churn is "qualitative today, not yet instrumented." Treat the queue as reasoned sequencing, not a measured optimum. The first conversion is explicitly a **probe that produces the missing signal**, not a commitment to the full queue on the strength of asserted pain.
+### Track B — Learnings reuse (qualitative; Retrieve carries a timing trigger)
+
+No Signal gate — proceeds on qualitative judgment. STRATEGY names a session-history measurement path for this metric (derivable-but-unbuilt, not a probe-requiring void).
+
+| Order | Candidate | Role | Trigger |
+|---|---|---|---|
+| B0 | **batch-learning-capture** | Track lead. Attacks the capture bottleneck; `ce-compound`'s 3-agent fan-out already exists to multiply; write-time dedup is the rigor upside. | — |
+| B1 | corpus-audit (Maintain) | Headless baseline + stale-marking safety invariant already specified; corpus-wide loop-until-dry is the increment. **Emits the `docs/solutions/` file count** that feeds B2's trigger. | — |
+| B2 | **high-recall Retrieve (R9)** | Highest *leverage* of any candidate (every consumer skill reads this seam) but **timing-triggered**. | **Timing trigger:** store-size >= 150 files (≈5× today's 31), read from B1's emitted count; or first observed recall complaint. |
+
+### Track C — Loop adoption (qualitative)
+
+| Order | Candidate | Role |
+|---|---|---|
+| C0 | CONCEPTS.md refresh | Net-new; manual baseline -> full marginal value; lower frequency. |
+| C1 | ce-ideate evaluate sub-step | Parallelize the currently-sequential Phase 3 evaluate; clean seam at Phase 6. |
+| C2 | tournament plan drafter | Speculative; high rigor upside, lower confidence. |
+
+**Next action is unambiguous: `work-vs-plan verification` (A0)** — the rework probe. Track B/C work may proceed in parallel on qualitative grounds.
+
+**Caveat (no silent caps):** only Track A has an evidence gate, and only after A0 produces the drift reading. Track B/C orderings remain qualitative proxies — `STRATEGY.md` confirms Rework/churn is "qualitative today, not yet instrumented." This is reasoned sequencing, not a measured optimum.
 
 ---
 
@@ -270,7 +286,12 @@ Stated concretely enough to **reject** a violating conversion.
 
 Skills couple to the memory loop **only through thin read (retrieval) and write (capture) seams**, never deep runtime integration. A conversion swaps the workflow *behind* a seam; it does not make the skill absorb or depend on the loop.
 
-**Reject-test:** A conversion violates R14 if **the converted skill stops working when the knowledge store is empty**, or if it reaches *past* the `ce-learnings-researcher` (read) / `ce-compound` (write) seams into loop internals. Concretely: if a reviewer diff shows the skill importing loop state, hard-coding `docs/solutions/` paths outside the capture seam, or failing a "store is empty" smoke test — reject it. The landed `ce-code-review` conversion passes: it sits behind the `mode:agent` seam and depends on no memory-loop state.
+**Reject-test — two profiles.** The original single test was written for a *consumer* skill (it cites `ce-code-review`) and **falsely rejects loop-internal candidates**, whose whole purpose is operating on the store. Split it:
+
+- **Consumer conversions** (code-review, doc-review, plan-deepening, ideate-evaluate, resolve-pr-feedback, simplify-code): violate R14 if they **stop working when the store is empty**, or **reach *past* the `ce-learnings-researcher` (read) / `ce-compound` (write) seams into loop internals** — importing loop state, hard-coding `docs/solutions/` paths, or failing a "store is empty" smoke test. The landed `ce-code-review` passes: behind the `mode:agent` seam, no memory-loop state.
+- **Loop-internal conversions** (batch-capture, Retrieve, corpus-audit, CONCEPTS): operating on the store **is** the contract, so the path-touching check is **N/A**. They are instead bound by **the seam they implement** — capture goes through `ce-compound`'s write+dedup path (no side-door writes), Maintain honors the stale-marking safety invariant (§5.3), Retrieve never mutates. The "store is empty" smoke test **still applies to all** (capture writes the first entries; Retrieve/audit return empty cleanly).
+
+This is why Q7's wiring is legal: corpus-audit (loop-internal, Maintain seam) may emit the `docs/solutions/` count; the *program's convert-Retrieve-now decision* reads it, so Retrieve-the-skill never reaches for the number.
 
 ### R15 — Claude-Code-only, no broken orchestration on other targets
 
@@ -288,9 +309,10 @@ Conversion-time questions, attached to the candidates they affect. These are dow
 
 | Question | Lands on | Status |
 |---|---|---|
-| First-conversion sequencing (R7, was a user decision) | Review branch | **Resolved** by Key Decision -> `ce-code-review` sub-step first (now landed). Stated as recommendation, not left open. |
+| Sequencing / first-conversion (R7) | §6 | **Superseded** by [ADR 0001](docs/adr/0001-per-metric-signal-gate.md): Phase 0 pattern-proving is complete (code-review, doc-review); the **next** conversion is `work-vs-plan verification` as Track A's drift **probe**. No longer a single-queue ranking. |
 | Batch-capture trigger (per-PR / per-session / per-window) + write-time dedup against existing `docs/solutions/` (R8) | Capture row (batch-learning-capture) | Open — needs research at conversion time. |
-| What "semantic" retrieval means given the grep-first, frontmatter store — does high-recall need an index/embedding layer, or is multi-modal grep + verification enough? (R9) | Retrieve row | Open — technical, resolve when the threshold trigger fires. |
+| What "semantic" retrieval means given the grep-first, frontmatter store — does high-recall need an index/embedding layer, or is multi-modal grep + verification enough? (R9) | Retrieve row (B2) | Open — technical, resolve when the **timing trigger** fires (store >= 150 files, read from corpus-audit's emitted count). |
+| Value of **T**, the pre-committed drift threshold that authorizes/halts Track A | Track A Signal gate (§6) | Open — set at conversion time, **before** the work-vs-plan probe runs; pre-commitment is the discipline (ADR 0001). |
 | Mechanism for keeping a workflow-based skill from emitting broken orchestration on non-CC targets — guard, gate, or converter-level handling (R15) | §7 Design constraints | Open — the landed inline-guard pattern is one answer; whether the converter should handle it is undecided. |
 | Safe-automation boundary for corpus-audit's archive/replace actions — how much runs unattended vs. needs a gate (R10) | Maintain row | Invariant stated (stale-marking, §5.3); boundary-tuning is a conversion-time open question. |
 
@@ -298,7 +320,7 @@ Conversion-time questions, attached to the candidates they affect. These are dow
 
 ## Appendix: how this map satisfies its success criteria
 
-- **(a) A planner can start a conversion without re-deriving** — every candidate row carries phase, pattern(s), R2 criteria assessment (marginal-over-baseline), impact, and conversion mode. §6 gives the ordered queue.
-- **(b) Rankings trace to STRATEGY metrics** — each queue row names its metric (Loop adoption / Learnings reuse / Rework/churn) with a stated rationale, and the caveat acknowledges Rework/churn is uninstrumented.
+- **(a) A planner can start a conversion without re-deriving** — every candidate row carries phase, pattern(s), R2 criteria assessment (marginal-over-baseline), impact, and conversion mode. §6 gives the per-metric tracks; the next action is `work-vs-plan verification` (A0).
+- **(b) Rankings trace to STRATEGY metrics** — each track *is* a metric (Rework/churn / Learnings reuse / Loop adoption); only Track A carries an evidence gate (drift), and the caveat acknowledges Rework/churn is uninstrumented until A0's probe produces the reading.
 - **(c) Criteria are reusable** — §2 is written to score a new skill cold (the gate, six axes, and formula stand alone).
-- **(d) R14 is reject-testable** — §7 gives the empty-store smoke test and the seam-reach test a reviewer can apply to kill a violating conversion.
+- **(d) R14 is reject-testable** — §7 gives two profiles (consumer vs loop-internal): the empty-store smoke test plus the seam-reach test for consumers, and the seam-contract test for loop-internal conversions.
