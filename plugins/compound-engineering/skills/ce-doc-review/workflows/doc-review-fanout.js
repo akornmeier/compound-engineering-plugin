@@ -86,13 +86,14 @@ const DOCUMENT_TYPE = VALIDATION.normalized.document_type;
 const ORIGIN_PATH = VALIDATION.normalized.origin_path;
 
 // Renderer-safe envelope for a contract violation (ADR 0002): mirrors the
-// success envelope's shape with empty collections so a caller that reads fields
-// does not crash; status + error tell it the CALL was malformed, not the run.
+// success envelope's shape AND field types — empty collections and empty strings,
+// never null — so a caller that reads fields (even string ops like .startsWith)
+// does not crash; status + error carry the contract violation, not the run.
 function invalidInputEnvelope(error) {
   return {
     status: "invalid_input",
     error,
-    document_type: null,
+    document_type: "",
     reviewers: [],
     fixes_to_apply: [],
     proposed_fixes: [],
@@ -110,8 +111,8 @@ function invalidInputEnvelope(error) {
       restated: 0,
       chains: { roots: 0, dependents: 0 },
     },
-    run_id: typeof A.run_id === "string" && A.run_id ? A.run_id : null,
-    artifact_path: null,
+    run_id: typeof A.run_id === "string" ? A.run_id : "",
+    artifact_path: "",
   };
 }
 
