@@ -53,6 +53,20 @@ docs/             Requirements, plans, solutions, and target specs
 CONCEPTS.md       Shared domain vocabulary (glossary of project-specific terms)
 ```
 
+## Intent Layer
+
+**Before modifying code in a subdirectory that has its own `AGENTS.md`, read that file first** to understand local entry points, contracts, and anti-patterns.
+
+- **CLI / converters**: `src/AGENTS.md` — the Bun/TypeScript CLI that parses Claude plugins and converts them to other agent platforms.
+- **Plugin authoring**: `plugins/compound-engineering/AGENTS.md` — skill/agent conventions, the `ce-` prefix rule, release-version restrictions, and skill-spec compliance.
+
+### Global Invariants
+
+- `AGENTS.md` is the single source of truth. Each node pairs it with a one-line `CLAUDE.md` shim (`@AGENTS.md`) for tools that look for `CLAUDE.md`. Edit `AGENTS.md`, never the shim.
+- A change may span multiple surfaces (CLI, plugin, marketplace catalog). Confirm which surface owns the affected files; do not assume "just CLI" or "just plugin" (see Repo Surfaces below).
+- Releases are automation-owned. Do not hand-bump release versions or hand-author changelog entries in routine PRs.
+- After changes that affect parsing, conversion, or output, run `bun test`; after changes to agents/commands/skills/manifests, run `bun run release:validate`.
+
 ## Repo Surfaces
 
 Changes in this repo may affect one or more of these surfaces:
