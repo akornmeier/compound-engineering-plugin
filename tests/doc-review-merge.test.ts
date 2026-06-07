@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 // Pure mechanical brackets of the ce-doc-review synthesis pipeline. Imported
 // directly here; the dynamic workflow (U2) inlines the same source.
 import {
+  validateArgs,
   mergeFront,
   mergeBack,
   normalize,
@@ -71,6 +72,84 @@ function annotated(overrides: Record<string, unknown> = {}) {
     ...overrides,
   }
 }
+
+// --- validateArgs (ADR 0002 input contract) ----------------------------------
+
+function validArgs(overrides: Record<string, unknown> = {}) {
+  return {
+    run_id: "20260607-120000-deadbeef",
+    personas: [{ name: "coherence", agentType: "compound-engineering:ce-coherence-reviewer" }],
+    document_path: "/abs/docs/plans/foo.md",
+    document_type: "plan",
+    origin_path: "docs/brainstorms/foo.md",
+    ...overrides,
+  }
+}
+
+describe("validateArgs (ADR 0002 input contract)", () => {
+  test("accepts a complete, well-formed call and passes normalized values through", () => {
+    const r = validateArgs(validArgs())
+    expect(r.ok).toBe(true)
+    expect(r.normalized.run_id).toBe("20260607-120000-deadbeef")
+    expect(r.normalized.document_type).toBe("plan")
+    expect(r.normalized.origin_path).toBe("docs/brainstorms/foo.md")
+  })
+
+  test("origin_path is the sole defaultable field — absent normalizes to \"none\"", () => {
+    const r = validateArgs(validArgs({ origin_path: undefined }))
+    expect(r.ok).toBe(true)
+    expect(r.normalized.origin_path).toBe("none")
+  })
+
+  test("rejects a missing run_id (runtime cannot mint a collision-free fallback)", () => {
+    expect(validateArgs(validArgs({ run_id: undefined })).ok).toBe(false)
+  })
+
+  test("rejects a run_id with path-traversal characters (artifact-path safety)", () => {
+    expect(validateArgs(validArgs({ run_id: "../../etc/passwd" })).ok).toBe(false)
+    expect(validateArgs(validArgs({ run_id: "a/b" })).ok).toBe(false)
+  })
+
+  test("rejects empty or missing personas", () => {
+    expect(validateArgs(validArgs({ personas: [] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: undefined })).ok).toBe(false)
+  })
+
+  test("rejects a persona with an unsafe name (path-traversal into the artifact dir)", () => {
+    expect(validateArgs(validArgs({ personas: [{ name: "../../etc/passwd", agentType: "x" }] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [{ name: "a/b", agentType: "x" }] })).ok).toBe(false)
+  })
+
+  test("rejects a persona with a missing/empty name or agentType", () => {
+    expect(validateArgs(validArgs({ personas: [{ agentType: "compound-engineering:ce-coherence-reviewer" }] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [{ name: "", agentType: "x" }] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [{ name: "coherence" }] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [{ name: "coherence", agentType: "" }] })).ok).toBe(false)
+  })
+
+  test("rejects a non-object persona entry", () => {
+    expect(validateArgs(validArgs({ personas: ["coherence"] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [null] })).ok).toBe(false)
+  })
+
+  test("rejects a relative or missing document_path (must be absolute across the boundary)", () => {
+    expect(validateArgs(validArgs({ document_path: "docs/plans/foo.md" })).ok).toBe(false)
+    expect(validateArgs(validArgs({ document_path: "" })).ok).toBe(false)
+    expect(validateArgs(validArgs({ document_path: undefined })).ok).toBe(false)
+  })
+
+  test("rejects a document_type outside the enum", () => {
+    expect(validateArgs(validArgs({ document_type: "spec" })).ok).toBe(false)
+    expect(validateArgs(validArgs({ document_type: undefined })).ok).toBe(false)
+  })
+
+  test("never throws on garbage input — returns ok:false instead", () => {
+    expect(validateArgs(undefined).ok).toBe(false)
+    expect(validateArgs(null).ok).toBe(false)
+    expect(validateArgs("not an object").ok).toBe(false)
+    expect(validateArgs(42).ok).toBe(false)
+  })
+})
 
 // --- normalize ---------------------------------------------------------------
 

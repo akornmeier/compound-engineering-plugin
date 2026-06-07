@@ -26,12 +26,18 @@
 // mandated pipeline order, because those steps carry bidirectional data
 // dependencies that a clean mechanical/judgment split would invert.
 //
-// Inputs (args), produced by the orchestrator's Phase 1:
-//   run_id         string
-//   personas       [{ name, agentType, model? }]  resolved reviewers (selection is model-side)
-//   document_path  string                          the doc to review (personas Read it)
-//   document_type  "requirements" | "plan"
-//   origin_path    string                          origin: frontmatter value, or "none"
+// Inputs (args), produced by the orchestrator's Phase 1. Validated per ADR 0002:
+// the orchestrator validates fully (with fs) before invoking; validateArgs (in
+// the inlined merge module) re-checks structurally and returns invalid_input on
+// a malformed call. All fields are REQUIRED except origin_path.
+//   run_id         string   REQUIRED, path-safe [A-Za-z0-9_-]+ (no fs/random in the
+//                           runtime -> cannot mint a collision-free fallback)
+//   personas       [{ name, agentType, model? }]  REQUIRED, non-empty; each name
+//                           path-safe ([A-Za-z0-9_-]+, used in the artifact path),
+//                           each agentType non-empty (selection is model-side)
+//   document_path  string   REQUIRED, ABSOLUTE (orchestrator resolves; personas Read it)
+//   document_type  "requirements" | "plan"  REQUIRED (enum)
+//   origin_path    string   optional -> defaults to "none" (origin: frontmatter value)
 
 export const meta = {
   name: "ce-doc-review-fanout",
@@ -98,6 +104,71 @@ function normalize(value) {
 
 function hasFix(finding) {
   return typeof finding.suggested_fix === "string" && finding.suggested_fix.trim().length > 0;
+}
+
+// ---------------------------------------------------------------------------
+// validateArgs — structural input-contract guard (ADR 0002).
+// ---------------------------------------------------------------------------
+//
+// Defense-in-depth at the workflow boundary. The ORCHESTRATOR is the primary
+// validator (it alone has filesystem access + Phase 1 context); this re-checks
+// only the structural invariants the runtime CAN verify without fs, for callers
+// other than the happy-path orchestrator (JSON-string args delivery, future
+// callers). Returns { ok: true, normalized } | { ok: false, error } — it never
+// throws, and a malformed CALL (invalid_input) is kept distinct from a degraded
+// RUN.
+//
+// run_id is REQUIRED, not defaultable: it is interpolated into the /tmp artifact
+// path, and the Workflow runtime has no Date.now()/Math.random(), so the only
+// possible fallback is a fixed string that collides across concurrent runs.
+// document_path must be ABSOLUTE — the orchestrator resolves it; the runtime
+// cannot stat the file, so this only asserts the structural shape.
+// Path-safe token: interpolated into the /tmp artifact path (run_id, and each
+// persona name as ARTIFACT_DIR + "/" + p.name + ".json"), so it must reject path
+// separators and traversal sequences.
+const PATH_SAFE_TOKEN = /^[A-Za-z0-9_-]+$/;
+const VALID_DOCUMENT_TYPE = new Set(["requirements", "plan"]);
+
+function validateArgs(A) {
+  const a = A && typeof A === "object" ? A : {};
+  if (typeof a.run_id !== "string" || !PATH_SAFE_TOKEN.test(a.run_id)) {
+    return { ok: false, error: "run_id missing or not a path-safe token ([A-Za-z0-9_-]+)" };
+  }
+  if (!Array.isArray(a.personas) || a.personas.length === 0) {
+    return { ok: false, error: "personas missing or empty (orchestrator resolves the reviewer list)" };
+  }
+  // Each persona is structurally validated: `name` is interpolated into the
+  // artifact path (path-traversal risk) and `agentType` drives dispatch, so a
+  // non-orchestrator caller cannot smuggle an unsafe name or an empty type.
+  for (const p of a.personas) {
+    if (!p || typeof p !== "object") {
+      return { ok: false, error: "each persona must be an object { name, agentType }" };
+    }
+    if (typeof p.name !== "string" || !PATH_SAFE_TOKEN.test(p.name)) {
+      return { ok: false, error: "persona name missing or not a path-safe token ([A-Za-z0-9_-]+) — it is interpolated into the artifact path" };
+    }
+    if (typeof p.agentType !== "string" || p.agentType.trim().length === 0) {
+      return { ok: false, error: "persona agentType missing or empty (the plugin-namespaced compound-engineering:ce-<name>-reviewer id)" };
+    }
+  }
+  if (typeof a.document_path !== "string" || !a.document_path.startsWith("/")) {
+    return { ok: false, error: "document_path missing or not absolute (orchestrator resolves it before staging)" };
+  }
+  if (!VALID_DOCUMENT_TYPE.has(a.document_type)) {
+    return { ok: false, error: 'document_type must be "requirements" or "plan"' };
+  }
+  return {
+    ok: true,
+    normalized: {
+      run_id: a.run_id,
+      personas: a.personas,
+      document_path: a.document_path,
+      document_type: a.document_type,
+      // origin_path is the sole defaultable field: "none" is a correct value
+      // (absent origin = no origin), which personas branch on deliberately.
+      origin_path: typeof a.origin_path === "string" && a.origin_path ? a.origin_path : "none",
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -529,24 +600,69 @@ function mergeBack(annotated, softBuckets) {
 
 // ---- args ------------------------------------------------------------------
 // The Workflow runtime may deliver `args` as an object OR a JSON string. Parse
-// defensively — a naive `args || {}` keeps the raw string and silently runs
-// all-defaults (the documented "empty review" failure mode).
+// defensively — a naive `args || {}` keeps the raw string; here a parse failure
+// falls through to the input-contract guard below, which rejects it as
+// invalid_input rather than running all-defaults (the "empty review" mode).
 let A = args;
 if (typeof A === "string") {
   try {
     A = JSON.parse(A);
   } catch (e) {
-    log("args was a non-JSON string; running with defaults: " + (e && e.message ? e.message : String(e)));
+    log("args was a non-JSON string; treating as empty — the input-contract guard will reject it as invalid_input: " + (e && e.message ? e.message : String(e)));
     A = {};
   }
 }
 A = A || {};
-const RUN_ID = A.run_id || "unknown-run";
+
+// Input-contract guard (ADR 0002): a malformed CALL short-circuits with
+// status:"invalid_input" BEFORE any agent dispatch — kept distinct from a
+// degraded RUN so a machine caller can tell "I mis-wired the call" from "the
+// reviewers had trouble." This is the structural defense-in-depth tier; the
+// orchestrator validates fully (with fs access) before ever invoking the
+// workflow. Bare `|| default` parsing here would re-create exactly the silent
+// empty-output the conversion's live-boundary learning was written to stop.
+const VALIDATION = validateArgs(A);
+if (!VALIDATION.ok) {
+  log("invalid_input: " + VALIDATION.error);
+  return invalidInputEnvelope(VALIDATION.error);
+}
+const RUN_ID = VALIDATION.normalized.run_id;
 const ARTIFACT_DIR = "/tmp/compound-engineering/ce-doc-review/" + RUN_ID;
-const PERSONAS = Array.isArray(A.personas) ? A.personas : [];
-const DOCUMENT_PATH = A.document_path || "";
-const DOCUMENT_TYPE = A.document_type || "requirements";
-const ORIGIN_PATH = A.origin_path || "none";
+const PERSONAS = VALIDATION.normalized.personas;
+const DOCUMENT_PATH = VALIDATION.normalized.document_path;
+const DOCUMENT_TYPE = VALIDATION.normalized.document_type;
+const ORIGIN_PATH = VALIDATION.normalized.origin_path;
+
+// Renderer-safe envelope for a contract violation (ADR 0002): mirrors the
+// success envelope's shape AND field types — empty collections and empty strings,
+// never null — so a caller that reads fields (even string ops like .startsWith)
+// does not crash; status + error carry the contract violation, not the run.
+function invalidInputEnvelope(error) {
+  return {
+    status: "invalid_input",
+    error,
+    document_type: "",
+    reviewers: [],
+    fixes_to_apply: [],
+    proposed_fixes: [],
+    decisions: [],
+    fyi: [],
+    residual_risks: [],
+    deferred_questions: [],
+    coverage: {
+      dropped: 0,
+      dropped_returns: 0,
+      dropped_findings: 0,
+      malformed_agents: 0,
+      dedup_merged: 0,
+      dropped_agents: 0,
+      restated: 0,
+      chains: { roots: 0, dependents: 0 },
+    },
+    run_id: typeof A.run_id === "string" ? A.run_id : "",
+    artifact_path: "",
+  };
+}
 
 // Full findings schema (findings-schema.json). Personas return FULL findings —
 // why_it_matters + evidence are NOT stripped, because the synthesis agent needs
