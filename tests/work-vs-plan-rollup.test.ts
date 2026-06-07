@@ -1,8 +1,20 @@
+import { readFileSync } from "fs"
+import path from "path"
 import { describe, expect, test } from "bun:test"
 import {
   parsePlanUnits,
   rollupVerdicts,
 } from "../plugins/compound-engineering/skills/ce-verify-work/workflows/drift-rollup.js"
+
+const VERDICT_SCHEMA = JSON.parse(
+  readFileSync(
+    path.join(
+      process.cwd(),
+      "plugins/compound-engineering/skills/ce-verify-work/references/verdict-schema.json",
+    ),
+    "utf8",
+  ),
+)
 
 // U1 — the pure deterministic module: a plan-unit parser and a verdict roll-up.
 // Both are net-new ground for this repo and feed a numeric threshold, so they
@@ -339,5 +351,36 @@ describe("rollupVerdicts — determinism", () => {
       { u_id: "U4", verdict: "unverifiable", rationale: "behavioral" },
     ]
     expect(JSON.stringify(rollupVerdicts(input))).toBe(JSON.stringify(rollupVerdicts(input)))
+  })
+})
+
+// U2 — the verdict-schema.json enum is the single source of truth shared with
+// the U1 roll-up. This consistency check fails if the two drift apart.
+describe("verdict-schema.json ↔ drift-rollup enum consistency", () => {
+  const enumVals: string[] = VERDICT_SCHEMA.properties.verdict.enum
+
+  test("schema enum is exactly the four verdicts", () => {
+    expect([...enumVals].sort()).toEqual(["done", "drifted", "remaining", "unverifiable"])
+  })
+
+  test("every schema enum verdict is accepted by rollupVerdicts; a non-enum verdict is dropped", () => {
+    for (const v of enumVals) {
+      const out = rollupVerdicts([{ u_id: "U1", verdict: v, evidence: ev("e"), rationale: "r" }])
+      expect(out.counts.dropped).toBe(0)
+      expect(out.units).toHaveLength(1)
+    }
+    const bad = rollupVerdicts([{ u_id: "U1", verdict: "partial", evidence: ev("e") }])
+    expect(bad.counts.dropped).toBe(1)
+    expect(bad.units).toHaveLength(0)
+  })
+
+  test("schema requires non-empty evidence for done and drifted", () => {
+    const cond = VERDICT_SCHEMA.allOf.find(
+      (c: { if?: { properties?: { verdict?: { enum?: string[] } } } }) =>
+        c.if?.properties?.verdict?.enum,
+    )
+    expect(new Set(cond.if.properties.verdict.enum)).toEqual(new Set(["done", "drifted"]))
+    expect(cond.then.required).toContain("evidence")
+    expect(cond.then.properties.evidence.minItems).toBe(1)
   })
 })
