@@ -11,7 +11,7 @@ After installing, run `/ce-setup` in any project. It diagnoses your environment,
 | Component | Count |
 |-----------|-------|
 | Agents | 50+ |
-| Skills | 38+ |
+| Skills | 39+ |
 
 ## Skills
 
@@ -29,6 +29,7 @@ The primary entry points for engineering work, invoked as slash commands. Detail
 | [`/ce-plan`](../../docs/skills/ce-plan.md) | Create structured plans for any multi-step task -- software features, research workflows, events, study plans -- with automatic confidence checking. Pass `output:html` to write the plan as a single self-contained HTML file instead of markdown (exclusive — md OR html, never both) |
 | [`/ce-code-review`](../../docs/skills/ce-code-review.md) | Structured code review with tiered persona agents, confidence gating, and dedup pipeline |
 | [`/ce-work`](../../docs/skills/ce-work.md) | Execute work items systematically |
+| [`/ce-verify-work`](../../docs/skills/ce-verify-work.md) | Classify a plan's Implementation Units against actual repo state (git + file state, never checkboxes) and report a per-unit verdict table plus a drift rate — what is done, remaining, or drifted |
 | [`/ce-debug`](../../docs/skills/ce-debug.md) | Systematically find root causes and fix bugs -- traces causal chains, forms testable hypotheses, and implements test-first fixes |
 | [`/ce-compound`](../../docs/skills/ce-compound.md) | Document solved problems to compound team knowledge |
 | [`/ce-compound-refresh`](../../docs/skills/ce-compound-refresh.md) | Refresh stale or drifting learnings and decide whether to keep, update, replace, or archive them |
