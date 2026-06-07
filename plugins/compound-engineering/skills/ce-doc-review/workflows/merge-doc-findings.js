@@ -55,6 +55,54 @@ function hasFix(finding) {
 }
 
 // ---------------------------------------------------------------------------
+// validateArgs — structural input-contract guard (ADR 0002).
+// ---------------------------------------------------------------------------
+//
+// Defense-in-depth at the workflow boundary. The ORCHESTRATOR is the primary
+// validator (it alone has filesystem access + Phase 1 context); this re-checks
+// only the structural invariants the runtime CAN verify without fs, for callers
+// other than the happy-path orchestrator (JSON-string args delivery, future
+// callers). Returns { ok: true, normalized } | { ok: false, error } — it never
+// throws, and a malformed CALL (invalid_input) is kept distinct from a degraded
+// RUN.
+//
+// run_id is REQUIRED, not defaultable: it is interpolated into the /tmp artifact
+// path, and the Workflow runtime has no Date.now()/Math.random(), so the only
+// possible fallback is a fixed string that collides across concurrent runs.
+// document_path must be ABSOLUTE — the orchestrator resolves it; the runtime
+// cannot stat the file, so this only asserts the structural shape.
+const RUN_ID_CHARSET = /^[A-Za-z0-9_-]+$/;
+const VALID_DOCUMENT_TYPE = new Set(["requirements", "plan"]);
+
+function validateArgs(A) {
+  const a = A && typeof A === "object" ? A : {};
+  if (typeof a.run_id !== "string" || !RUN_ID_CHARSET.test(a.run_id)) {
+    return { ok: false, error: "run_id missing or not a path-safe token ([A-Za-z0-9_-]+)" };
+  }
+  if (!Array.isArray(a.personas) || a.personas.length === 0) {
+    return { ok: false, error: "personas missing or empty (orchestrator resolves the reviewer list)" };
+  }
+  if (typeof a.document_path !== "string" || !a.document_path.startsWith("/")) {
+    return { ok: false, error: "document_path missing or not absolute (orchestrator resolves it before staging)" };
+  }
+  if (!VALID_DOCUMENT_TYPE.has(a.document_type)) {
+    return { ok: false, error: 'document_type must be "requirements" or "plan"' };
+  }
+  return {
+    ok: true,
+    normalized: {
+      run_id: a.run_id,
+      personas: a.personas,
+      document_path: a.document_path,
+      document_type: a.document_type,
+      // origin_path is the sole defaultable field: "none" is a correct value
+      // (absent origin = no origin), which personas branch on deliberately.
+      origin_path: typeof a.origin_path === "string" && a.origin_path ? a.origin_path : "none",
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // mergeFront — 3.1 validate, 3.2 anchor gate, 3.3 cross-persona dedup.
 // ---------------------------------------------------------------------------
 
@@ -477,4 +525,4 @@ function mergeBack(annotated, softBuckets) {
   };
 }
 
-export { mergeFront, mergeBack, normalize };
+export { validateArgs, mergeFront, mergeBack, normalize };

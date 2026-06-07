@@ -110,6 +110,23 @@ describe("ce-doc-review workflow live-boundary contracts", () => {
     expect(generated).toContain("JSON.parse(A)")
   })
 
+  test("guards the input contract and short-circuits a malformed call (ADR 0002)", async () => {
+    const generated = await read(GENERATED_PATH)
+    // The structural guard is inlined from the merge module and called before dispatch.
+    expect(generated).toContain("function validateArgs")
+    expect(generated).toContain("validateArgs(A)")
+    // A malformed call returns invalid_input — distinct from a degraded run — not a silent default.
+    expect(generated).toContain('status: "invalid_input"')
+    expect(generated).toContain("invalidInputEnvelope")
+    expect(generated).not.toContain('A.run_id || "unknown-run"')
+  })
+
+  test("structurally enforces an absolute document_path and a path-safe run_id (ADR 0002)", async () => {
+    const generated = await read(GENERATED_PATH)
+    expect(generated).toContain('.startsWith("/")')
+    expect(generated).toContain("/^[A-Za-z0-9_-]+$/")
+  })
+
   test("logs persona dispatch failures instead of silently dropping agents", async () => {
     const generated = await read(GENERATED_PATH)
     expect(generated).toMatch(/persona .* failed/)

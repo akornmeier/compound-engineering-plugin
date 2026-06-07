@@ -45,6 +45,14 @@ _Avoid_: "the queue" as a single ranked list — that flat shape hid the gate an
 The bootstrapping conversions (ce-code-review, ce-doc-review) justified by *de-risking and proving the workflow pattern*, **not** by any STRATEGY metric. Complete. Sits outside the three metric-**Track**s.
 _Avoid_: tagging these with a metric (Rework/churn etc.) — that is the post-hoc rationalization ADR 0001 retags away.
 
+**Input contract** (per conversion):
+The data a conversion's orchestrator stages into the workflow runtime — the seam the conversion creates. The term is overloaded across three nested boundaries; **unqualified it means the outermost**: orchestrator → workflow (the `args`). The inner two are the **persona input** (workflow → each fan-out agent) and the **synthesis input** (merged findings → the synthesis agent). Name the boundary whenever it is not the outermost.
+_Avoid_: "the input" alone when more than one boundary is in play.
+
+**Caller-contract violation vs runtime degradation** (envelope outcome classes):
+A converted workflow's return envelope keeps three outcomes distinct: **complete** (valid call, full run), **degraded** (valid call, but some fan-out/synthesis agents failed — a *runtime* outcome), and **invalid_input** (a required input was missing or malformed — the *call itself* was wrong). Collapsing the third into the second blinds the machine callers that consume the envelope — they cannot tell "I mis-wired the call" from "the agents had trouble." Required-input validation is **layered**: the orchestrator validates fully before invoking (it alone holds the upstream context and can touch the filesystem), and the workflow re-checks structurally as defense for non-orchestrator callers.
+_Avoid_: one "failed" status standing for both a bad call and a bad run. (Pattern governed by ADR 0002.)
+
 ## Relationships
 
 - A **Conversion** must pass the **Candidacy gate** to be eligible; on a gated **Track**, its probe must satisfy that track's **Signal gate** before the rest of the track is authorized.
@@ -54,3 +62,4 @@ _Avoid_: tagging these with a metric (Rework/churn etc.) — that is the post-ho
 ## Flagged ambiguities
 
 - "gate" absorbed **three** distinct ideas — **resolved** into **Candidacy gate** (is the step eligible? R1 non-interactive), **Signal gate** (is the metric's thesis supported by evidence? per-metric, drift for Rework/churn), and **Timing trigger** (is it relevant yet? retrieve's store-size). The overload let the program march rank 0 → 1 → 2 while believing it was still gated, and let an unread placeholder ("a set size") pose as a real gate.
+- "input contract" absorbed **three** nested boundaries — **resolved** into **Input contract** (orchestrator → workflow `args`, the default reading), **persona input** (workflow → fan-out agent), and **synthesis input** (merged findings → synthesis agent). The overload hid which seam a decision governed; unqualified "input contract" now means the outermost.

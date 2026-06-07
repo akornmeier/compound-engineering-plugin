@@ -148,13 +148,18 @@ Add activated conditional personas:
 In `mode:headless`, when the **Workflow tool is available** (Claude Code), run the persona fan-out + synthesis as a dynamic workflow instead of dispatching reviewers inline — the persona returns and the whole synthesis working memory stay in the workflow runtime, so only the final envelope enters this orchestrator's context (and the context of any caller — `ce-plan` Phase 5.3.8, `ce-brainstorm` Phase 4). This is also the **cross-platform guard**: on targets without the Workflow tool (Codex, Gemini, etc.) the fallback below is the unchanged, fully-functional review, so a converted skill never emits orchestration the target cannot run. **Default/interactive mode never uses this path** — it always runs the prose dispatch below and the interactive Phases 3-5.
 
 1. Read `workflows/doc-review-fanout.generated.js` (co-located; resolved relative to this skill).
-2. Generate a run id and create its artifact dir:
+2. **Validate the input contract (ADR 0002), then mint the run id.** This is the *primary* validation tier — the orchestrator alone can touch the filesystem and holds Phase 1's context, so it fails fast here instead of spinning up a workflow for a known-bad call (the workflow re-checks the same invariants structurally as defense-in-depth). Before invoking, confirm:
+   - **`document_path`** resolves to an **absolute** path that exists and is readable (Phase 1 already read it — resolve it to absolute now). The workflow Reads this path from its own runtime, so a relative path is not safe across the boundary.
+   - **`document_type`** was classified by Phase 1 to `requirements` or `plan`.
+   - the **persona list** (Build Agent List above) is non-empty.
+
+   On any failure, **do not invoke the workflow** and **do not** fall back to the prose path — a contract violation is a caller bug, not a platform gap. Report the specific error and stop. Otherwise mint the run id and artifact dir:
    ```bash
    RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ')
    mkdir -p "/tmp/compound-engineering/ce-doc-review/$RUN_ID"
    ```
-3. Invoke the Workflow tool with `script` set to that file's contents and `args`:
-   - `run_id` — from step 2; `document_path` — the document under review; `document_type` — `requirements` or `plan` from Phase 1 classification; `origin_path` — the document's `origin:` frontmatter value, or `none` (extracted in Phase 1).
+3. Invoke the Workflow tool with `script` set to that file's contents and `args`. Every field except `origin_path` is **required** — a missing or malformed one makes the workflow return `status: "invalid_input"` instead of a review:
+   - `run_id` — from step 2 (a path-safe `[A-Za-z0-9_-]+` token); `document_path` — the **absolute** path confirmed in step 2; `document_type` — `requirements` or `plan` from Phase 1 classification; `origin_path` — the document's `origin:` frontmatter value, or `none` (the one defaultable field, extracted in Phase 1).
    - `personas` — the resolved reviewer list (Build Agent List above) as `{ name, agentType, model }`, where `name` is the short persona name, `agentType` is the **plugin-namespaced** `compound-engineering:ce-<name>-reviewer` — the workflow `agent()` registry does **not** resolve the bare `ce-<name>` form, and a bad type is swallowed into an empty review — and `model` matches the persona's declared tier (omit `model` for `inherit` personas so they inherit the session model):
 
      | name | agentType | model |
@@ -169,7 +174,7 @@ In `mode:headless`, when the **Workflow tool is available** (Claude Code), run t
 
 4. The workflow returns the `mode:headless` envelope — it has already run the fan-out, the synthesis agent (the `3.3b-3.6` judgment middle), and the deterministic merge. It is **report-only**: it never mutates the document. The envelope carries `fixes_to_apply` (anchor-`100` `safe_auto`), `proposed_fixes`, `decisions` (each with `depends_on`/`dependents`), `fyi`, `residual_risks`, `deferred_questions`, `coverage` (`dropped`/`restated`/`chains`/`dropped_agents`/`malformed_agents`), `reviewers`, `run_id`, `artifact_path`, and `status`.
 5. **Apply** the returned `fixes_to_apply` to the document with the platform's edit tool — these are the anchor-`100` `safe_auto` fixes (the sole application step; the workflow never applies). Then **render** the Phase 4 headless text envelope (see `references/synthesis-and-presentation.md` — "Headless mode") from the returned data: list applied fixes, then Proposed fixes, Decisions (nesting each root's `dependents` as an indented sub-block, never re-listed at their own position), FYI observations, Residual concerns, Deferred questions, and the `Dropped:` / `Chains:` / `Restated:` Coverage footnotes when non-zero. End with `Review complete`. Honor the **protected-artifact** rule and the user-facing vocabulary rule.
-6. Do **not** re-run the Phase 3-5 synthesis on the envelope, do **not** fire any interactive question, and do **not** run R29/R30 (the workflow is single-round with an empty primer). If `status` is `degraded`, surface the failed/malformed reviewers in Coverage but still render what returned.
+6. Do **not** re-run the Phase 3-5 synthesis on the envelope, do **not** fire any interactive question, and do **not** run R29/R30 (the workflow is single-round with an empty primer). If `status` is `invalid_input`, the staged `args` were malformed — surface the returned `error` and stop; do **not** render a report (this indicates the step 2 validation was skipped or wrong, since it should have caught the violation first). If `status` is `degraded`, surface the failed/malformed reviewers in Coverage but still render what returned.
 
 When the Workflow tool is unavailable, ignore this subsection and run the prose dispatch below.
 
