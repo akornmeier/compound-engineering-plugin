@@ -19,7 +19,7 @@ The Bun + TypeScript CLI (`compound-plugin`) that parses a Claude Code plugin an
 - **Adding/changing a target follows the root checklist.** See "Adding a New Target Provider" in the repo-root `AGENTS.md` — registry entry, types + explicit mapping, CLI wiring, tests (converter + writer + CLI), docs. Tests are required alongside implementation, not after.
 - **Output paths and merge semantics are stable.** OpenCode writes `opencode.json` (deep-merged, never overwritten wholesale) and `.opencode/{agents,skills,plugins}`. Do not casually relocate generated files.
 - **Legacy-cleanup registries are paired.** When removing a skill/agent/command, update both `utils/legacy-cleanup.ts` (`STALE_*`) and `data/plugin-legacy-artifacts.ts` so stale flat-install artifacts get swept.
-- **Release-metadata logic lives in `release/`; the runnable entrypoints are repo-root `scripts/release/*.ts`.** `bun run release:validate` runs detect-only (`write: false`) and fails on drift; `release:sync-metadata --write` applies description corrections. Plugin **version** bumps are owned by release-please, not written here (Codex version sync is explicitly detect-only). See repo-root `AGENTS.md` for the workflow.
+- **Release-metadata logic lives in `release/`; the runnable entrypoints are repo-root `scripts/release/*.ts`.** `bun run release:validate` runs detect-only (`write: false`) and fails on drift; `bun run release:sync-metadata` (which already passes `--write`) applies description corrections. Plugin **version** bumps are owned by release-please, not written here (Codex version sync is explicitly detect-only). See repo-root `AGENTS.md` for the workflow.
 
 ## Anti-patterns
 
@@ -32,5 +32,5 @@ The Bun + TypeScript CLI (`compound-plugin`) that parses a Claude Code plugin an
 
 ## Related Context
 
-- Plugin content being converted: `../plugins/compound-engineering/AGENTS.md`
-- Tests and fixtures: `../tests/` (`converter.test.ts`, writer tests, `cli.test.ts`)
+- Plugin content being converted: `plugins/compound-engineering/AGENTS.md`
+- Tests and fixtures: `tests/` (`converter.test.ts`, writer tests, `cli.test.ts`)
