@@ -115,6 +115,23 @@ describe("validateArgs (ADR 0002 input contract)", () => {
     expect(validateArgs(validArgs({ personas: undefined })).ok).toBe(false)
   })
 
+  test("rejects a persona with an unsafe name (path-traversal into the artifact dir)", () => {
+    expect(validateArgs(validArgs({ personas: [{ name: "../../etc/passwd", agentType: "x" }] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [{ name: "a/b", agentType: "x" }] })).ok).toBe(false)
+  })
+
+  test("rejects a persona with a missing/empty name or agentType", () => {
+    expect(validateArgs(validArgs({ personas: [{ agentType: "compound-engineering:ce-coherence-reviewer" }] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [{ name: "", agentType: "x" }] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [{ name: "coherence" }] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [{ name: "coherence", agentType: "" }] })).ok).toBe(false)
+  })
+
+  test("rejects a non-object persona entry", () => {
+    expect(validateArgs(validArgs({ personas: ["coherence"] })).ok).toBe(false)
+    expect(validateArgs(validArgs({ personas: [null] })).ok).toBe(false)
+  })
+
   test("rejects a relative or missing document_path (must be absolute across the boundary)", () => {
     expect(validateArgs(validArgs({ document_path: "docs/plans/foo.md" })).ok).toBe(false)
     expect(validateArgs(validArgs({ document_path: "" })).ok).toBe(false)

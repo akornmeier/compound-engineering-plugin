@@ -28,7 +28,9 @@
 // a malformed call. All fields are REQUIRED except origin_path.
 //   run_id         string   REQUIRED, path-safe [A-Za-z0-9_-]+ (no fs/random in the
 //                           runtime -> cannot mint a collision-free fallback)
-//   personas       [{ name, agentType, model? }]  REQUIRED, non-empty (selection is model-side)
+//   personas       [{ name, agentType, model? }]  REQUIRED, non-empty; each name
+//                           path-safe ([A-Za-z0-9_-]+, used in the artifact path),
+//                           each agentType non-empty (selection is model-side)
 //   document_path  string   REQUIRED, ABSOLUTE (orchestrator resolves; personas Read it)
 //   document_type  "requirements" | "plan"  REQUIRED (enum)
 //   origin_path    string   optional -> defaults to "none" (origin: frontmatter value)
@@ -50,14 +52,15 @@ export const meta = {
 
 // ---- args ------------------------------------------------------------------
 // The Workflow runtime may deliver `args` as an object OR a JSON string. Parse
-// defensively — a naive `args || {}` keeps the raw string and silently runs
-// all-defaults (the documented "empty review" failure mode).
+// defensively — a naive `args || {}` keeps the raw string; here a parse failure
+// falls through to the input-contract guard below, which rejects it as
+// invalid_input rather than running all-defaults (the "empty review" mode).
 let A = args;
 if (typeof A === "string") {
   try {
     A = JSON.parse(A);
   } catch (e) {
-    log("args was a non-JSON string; running with defaults: " + (e && e.message ? e.message : String(e)));
+    log("args was a non-JSON string; treating as empty — the input-contract guard will reject it as invalid_input: " + (e && e.message ? e.message : String(e)));
     A = {};
   }
 }

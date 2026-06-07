@@ -31,7 +31,8 @@ prevent. We adopt one validation pattern for **all** conversions:
    existence (free — it already read the document to classify it), enum-checks classified
    fields, and confirms the resolved agent list is non-empty — failing fast *before*
    spinning up a workflow for a known-bad call. The **workflow keeps a structural guard**
-   (non-empty, `startsWith("/")`, enum membership, `run_id` charset) as defense-in-depth,
+   (non-empty, `startsWith("/")`, enum membership, `run_id` and persona-`name`
+   path-safe charset, per-persona `agentType` presence) as defense-in-depth,
    because the contract is consumed by more than the happy-path orchestrator: JSON-string
    `args` delivery and future non-orchestrator callers. The workflow cannot touch the
    filesystem, so it can only do structural checks — semantic validation must live in the

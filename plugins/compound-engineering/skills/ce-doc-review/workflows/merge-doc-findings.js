@@ -71,16 +71,33 @@ function hasFix(finding) {
 // possible fallback is a fixed string that collides across concurrent runs.
 // document_path must be ABSOLUTE — the orchestrator resolves it; the runtime
 // cannot stat the file, so this only asserts the structural shape.
-const RUN_ID_CHARSET = /^[A-Za-z0-9_-]+$/;
+// Path-safe token: interpolated into the /tmp artifact path (run_id, and each
+// persona name as ARTIFACT_DIR + "/" + p.name + ".json"), so it must reject path
+// separators and traversal sequences.
+const PATH_SAFE_TOKEN = /^[A-Za-z0-9_-]+$/;
 const VALID_DOCUMENT_TYPE = new Set(["requirements", "plan"]);
 
 function validateArgs(A) {
   const a = A && typeof A === "object" ? A : {};
-  if (typeof a.run_id !== "string" || !RUN_ID_CHARSET.test(a.run_id)) {
+  if (typeof a.run_id !== "string" || !PATH_SAFE_TOKEN.test(a.run_id)) {
     return { ok: false, error: "run_id missing or not a path-safe token ([A-Za-z0-9_-]+)" };
   }
   if (!Array.isArray(a.personas) || a.personas.length === 0) {
     return { ok: false, error: "personas missing or empty (orchestrator resolves the reviewer list)" };
+  }
+  // Each persona is structurally validated: `name` is interpolated into the
+  // artifact path (path-traversal risk) and `agentType` drives dispatch, so a
+  // non-orchestrator caller cannot smuggle an unsafe name or an empty type.
+  for (const p of a.personas) {
+    if (!p || typeof p !== "object") {
+      return { ok: false, error: "each persona must be an object { name, agentType }" };
+    }
+    if (typeof p.name !== "string" || !PATH_SAFE_TOKEN.test(p.name)) {
+      return { ok: false, error: "persona name missing or not a path-safe token ([A-Za-z0-9_-]+) — it is interpolated into the artifact path" };
+    }
+    if (typeof p.agentType !== "string" || p.agentType.trim().length === 0) {
+      return { ok: false, error: "persona agentType missing or empty (the plugin-namespaced compound-engineering:ce-<name>-reviewer id)" };
+    }
   }
   if (typeof a.document_path !== "string" || !a.document_path.startsWith("/")) {
     return { ok: false, error: "document_path missing or not absolute (orchestrator resolves it before staging)" };
