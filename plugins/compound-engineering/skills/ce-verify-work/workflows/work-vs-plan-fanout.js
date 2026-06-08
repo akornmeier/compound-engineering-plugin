@@ -90,7 +90,10 @@ function validateArgs(a) {
   }
   let agent_type;
   if (a.agentType != null) {
-    if (typeof a.agentType !== "string" || a.agentType.indexOf(":") === -1) {
+    // Require a real plugin-namespaced id: non-empty segments on both sides of a
+    // single colon. A bare ":" or "foo:" is not meaningfully namespaced and
+    // would fail to resolve at dispatch, so reject it here rather than swallow it.
+    if (typeof a.agentType !== "string" || !/^[\w.-]+:[\w.-]+$/.test(a.agentType)) {
       return { ok: false, error: "agentType, when set, must be plugin-namespaced (e.g. compound-engineering:ce-...)" };
     }
     agent_type = a.agentType;

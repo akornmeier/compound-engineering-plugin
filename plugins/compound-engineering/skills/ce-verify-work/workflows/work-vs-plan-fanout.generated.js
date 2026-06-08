@@ -288,9 +288,13 @@ function rollupVerdicts(verdicts) {
   counts.attempted = counts.done + counts.drifted;
   const total = counts.done + counts.remaining + counts.drifted + counts.unverifiable;
   const drift_rate = counts.attempted === 0 ? null : counts.drifted / counts.attempted;
+  // Low-information sample: too few attempted units — INCLUDING zero, where an
+  // all-remaining plan is the least-informative sample of all — or a run
+  // dominated by unverifiable units. Guarded by `total > 0` so a genuinely empty
+  // result (no valid verdicts) is not flagged.
   const low_confidence =
-    (counts.attempted > 0 && counts.attempted < ATTEMPTED_FLOOR) ||
-    (total > 0 && counts.unverifiable / total >= UNVERIFIABLE_FRACTION);
+    total > 0 &&
+    (counts.attempted < ATTEMPTED_FLOOR || counts.unverifiable / total >= UNVERIFIABLE_FRACTION);
 
   return { drift_rate, low_confidence, counts, units, unverifiable };
 }
@@ -339,7 +343,10 @@ function validateArgs(a) {
   }
   let agent_type;
   if (a.agentType != null) {
-    if (typeof a.agentType !== "string" || a.agentType.indexOf(":") === -1) {
+    // Require a real plugin-namespaced id: non-empty segments on both sides of a
+    // single colon. A bare ":" or "foo:" is not meaningfully namespaced and
+    // would fail to resolve at dispatch, so reject it here rather than swallow it.
+    if (typeof a.agentType !== "string" || !/^[\w.-]+:[\w.-]+$/.test(a.agentType)) {
       return { ok: false, error: "agentType, when set, must be plugin-namespaced (e.g. compound-engineering:ce-...)" };
     }
     agent_type = a.agentType;

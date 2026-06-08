@@ -126,6 +126,12 @@ describe("ce-verify-work workflow live-boundary contracts", () => {
     expect(generated).toContain('.startsWith("/")')
   })
 
+  test("agentType validation requires a real plugin namespace (a bare colon does not pass)", async () => {
+    const generated = await read(GENERATED_PATH)
+    // Non-empty segments on both sides of a single colon — rejects ":" and "foo:".
+    expect(generated).toContain("[\\w.-]+:[\\w.-]+")
+  })
+
   test("requires plan_text in args (the runtime has no fs to read the plan itself)", async () => {
     const generated = await read(GENERATED_PATH)
     expect(generated).toContain("plan_text")

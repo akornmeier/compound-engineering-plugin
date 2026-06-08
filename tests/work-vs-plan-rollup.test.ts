@@ -298,6 +298,21 @@ describe("rollupVerdicts — dilution and small-N guards", () => {
     // attempted = 3 (>= floor), but 4/7 unverifiable is a low-confidence run.
     expect(out.low_confidence).toBe(true)
   })
+
+  test("an all-remaining plan (attempted 0, total > 0) is the least-informative sample and is flagged", () => {
+    const out = rollupVerdicts([
+      { u_id: "U1", verdict: "remaining" },
+      { u_id: "U2", verdict: "remaining" },
+    ])
+    expect(out.drift_rate).toBeNull()
+    expect(out.low_confidence).toBe(true)
+  })
+
+  test("a genuinely empty result (no valid verdicts) is not flagged", () => {
+    expect(rollupVerdicts([]).low_confidence).toBe(false)
+    // an all-dropped set also has total 0 -> nothing to be confident or not about
+    expect(rollupVerdicts([{ u_id: "", verdict: "done", evidence: ev("x") }]).low_confidence).toBe(false)
+  })
 })
 
 describe("rollupVerdicts — validation drops malformed and uncited verdicts", () => {
