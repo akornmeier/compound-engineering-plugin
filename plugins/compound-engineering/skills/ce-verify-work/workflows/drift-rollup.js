@@ -87,6 +87,33 @@ function isTestPath(p) {
   return /(^|\/)tests?\//.test(p) || /[._-](test|spec)\.[A-Za-z0-9]+$/i.test(p);
 }
 
+// Well-known extensionless repo files. A bare token (no slash, no extension)
+// is a real path only when it is one of these — this readmits `Dockerfile` /
+// `Makefile` / `LICENSE` without also readmitting bare identifiers like
+// `import` / `fs` / `Read` that appear in Files prose. (Dotfiles such as
+// `.gitignore` already pass via the extension rule — the leading dot reads as
+// `.ext`.) Heuristic, not exhaustive: an obscure extensionless file not listed
+// here is still dropped, which is acceptable for a Files-block scanner.
+const EXTENSIONLESS_FILES = new Set([
+  "dockerfile", "makefile", "license", "procfile", "gemfile", "rakefile",
+  "jenkinsfile", "brewfile", "vagrantfile", "caddyfile", "justfile", "containerfile",
+  "notice", "authors", "contributors", "codeowners", "readme", "changelog", "version",
+]);
+
+// A backtick span inside a Files block is a real declared path only if it has a
+// path shape. Files prose mixes inline code that is NOT a path — globs (`ce-*`),
+// templated placeholders (`ce-<name>.md`), shell commands (`bun run release:validate`),
+// and bare identifiers (`import`, `fs`). Skip those so they never read as a
+// missing/declared file. A path has no whitespace, no glob/placeholder chars,
+// and either a directory separator, a trailing file extension, or a known
+// extensionless filename.
+function isPlausiblePath(p) {
+  if (/\s/.test(p)) return false;
+  if (/[*<>]/.test(p)) return false;
+  if (p.includes("/") || /\.[A-Za-z0-9]+$/.test(p)) return true;
+  return EXTENSIONLESS_FILES.has(p.toLowerCase());
+}
+
 // From a Files field block, pull each backtick-wrapped path and classify it by
 // its trailing annotation (`(new)` -> create, `(modified)`/`(extended)` ->
 // modify) and by path shape (test). `all` is every distinct declared path —
@@ -98,11 +125,13 @@ function parseFiles(block) {
   const test = [];
   const all = [];
   const seen = new Set();
-  const re = /`([^`]+)`([^\n]*)/g;
+  // Trailing capture stops at the next backtick (not end of line) so a Files
+  // bullet with several backtick spans yields every token, not just the first.
+  const re = /`([^`]+)`([^`\n]*)/g;
   let m;
   while ((m = re.exec(block))) {
     const p = m[1].trim();
-    if (!p) continue;
+    if (!p || !isPlausiblePath(p)) continue;
     const trailing = (m[2] || "").toLowerCase();
     if (!seen.has(p)) {
       seen.add(p);
