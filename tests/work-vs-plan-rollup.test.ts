@@ -201,6 +201,40 @@ describe("parsePlanUnits — empty / malformed plans", () => {
   })
 })
 
+describe("parsePlanUnits — Files skips non-path backtick tokens", () => {
+  // Files blocks carry prose with inline code: globs, templated placeholders,
+  // shell commands, and bare identifiers. Only real path-shaped tokens are files.
+  const PLAN = `## Implementation Units
+
+### U1. Unit with mixed backtick tokens in its Files block
+
+**Goal:** Exercise the path-shape filter.
+
+**Files:**
+- \`src/real.js\` (new)
+- **Conditional — only if the \`ce-*\` path is taken:** \`plugins/agents/ce-<name>.md\` (new) + a \`README.md\` row + a \`bun run release:validate\` pass
+- \`tests/real.test.ts\` (new); must have no \`import\` of \`fs\`
+
+**Verification:** real exists.
+`
+  const [u] = parsePlanUnits(PLAN)
+
+  test("real path-shaped tokens are kept — including a later one on a mixed line", () => {
+    expect(u.files.all).toContain("src/real.js")
+    expect(u.files.all).toContain("README.md") // .md extension, after non-paths on the same line
+    expect(u.files.all).toContain("tests/real.test.ts")
+    expect(u.files.test).toContain("tests/real.test.ts")
+  })
+
+  test("globs, templated placeholders, commands, and bare words are skipped", () => {
+    expect(u.files.all).not.toContain("ce-*") // glob
+    expect(u.files.all).not.toContain("plugins/agents/ce-<name>.md") // <placeholder>
+    expect(u.files.all).not.toContain("bun run release:validate") // command (has spaces)
+    expect(u.files.all).not.toContain("import") // bare word, no path shape
+    expect(u.files.all).not.toContain("fs")
+  })
+})
+
 // ---------------------------------------------------------------------------
 // rollupVerdicts — drift rate over attempted units, with the dilution and
 // small-N guards the threshold depends on.

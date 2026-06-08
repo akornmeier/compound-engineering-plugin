@@ -87,6 +87,18 @@ function isTestPath(p) {
   return /(^|\/)tests?\//.test(p) || /[._-](test|spec)\.[A-Za-z0-9]+$/i.test(p);
 }
 
+// A backtick span inside a Files block is a real declared path only if it has a
+// path shape. Files prose mixes inline code that is NOT a path — globs (`ce-*`),
+// templated placeholders (`ce-<name>.md`), shell commands (`bun run release:validate`),
+// and bare identifiers (`import`, `fs`). Skip those so they never read as a
+// missing/declared file. A path has no whitespace, no glob/placeholder chars,
+// and either a directory separator or a trailing file extension.
+function isPlausiblePath(p) {
+  if (/\s/.test(p)) return false;
+  if (/[*<>]/.test(p)) return false;
+  return p.includes("/") || /\.[A-Za-z0-9]+$/.test(p);
+}
+
 // From a Files field block, pull each backtick-wrapped path and classify it by
 // its trailing annotation (`(new)` -> create, `(modified)`/`(extended)` ->
 // modify) and by path shape (test). `all` is every distinct declared path —
@@ -98,11 +110,13 @@ function parseFiles(block) {
   const test = [];
   const all = [];
   const seen = new Set();
-  const re = /`([^`]+)`([^\n]*)/g;
+  // Trailing capture stops at the next backtick (not end of line) so a Files
+  // bullet with several backtick spans yields every token, not just the first.
+  const re = /`([^`]+)`([^`\n]*)/g;
   let m;
   while ((m = re.exec(block))) {
     const p = m[1].trim();
-    if (!p) continue;
+    if (!p || !isPlausiblePath(p)) continue;
     const trailing = (m[2] || "").toLowerCase();
     if (!seen.has(p)) {
       seen.add(p);
