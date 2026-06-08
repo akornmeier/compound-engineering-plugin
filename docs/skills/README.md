@@ -49,6 +49,7 @@ Skills that anchor, feed, or maintain the loop without being steps inside it.
 | Skill | Description |
 |-------|-------------|
 | [`/ce-strategy`](./ce-strategy.md) | Create or maintain `STRATEGY.md` — the upstream anchor read by `ce-ideate`, `ce-brainstorm`, and `ce-plan` as grounding |
+| [`/ce-verify-work`](./ce-verify-work.md) | Classify a plan's Implementation Units against actual repo state and report a per-unit verdict table plus a drift rate — the rework/churn probe, done vs remaining vs drifted |
 | [`/ce-product-pulse`](./ce-product-pulse.md) | Outer feedback loop — single-page time-windowed report on usage, performance, errors, followups; saved to `docs/pulse-reports/` as a timeline |
 | [`/ce-compound-refresh`](./ce-compound-refresh.md) | Maintain `docs/solutions/` over time — five outcomes (Keep / Update / Consolidate / Replace / Delete), Interactive + Autofix modes |
 

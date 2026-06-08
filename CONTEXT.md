@@ -34,7 +34,7 @@ A conversion is **loop-internal** if it occupies a core spine position (Capture 
 A candidate's value is the increment over its _existing headless/agent mode_, not over its interactive mode. The denominator is what today's headless path already stages to disk.
 
 **Drift rate**:
-The **Signal gate**'s reading: the fraction of a plan's tasks that *drifted* (claimed done but the repo diverged, or claimed done but not actually done) over total tasks. **Derived at read-time** by aggregating drift learnings captured via `ce-compound` + session history — never stored as a number (that would reopen the out-of-scope task-ledger). The proxy for **rework/churn**.
+The **Signal gate**'s reading: the fraction of a plan's *attempted* tasks (`done + drifted`) that *drifted* (claimed done but the repo diverged, or claimed done but not actually done). The denominator is the attempted-and-verifiable set, **not** total tasks — never-started (`remaining`) and not-statically-settleable (`unverifiable`) tasks are excluded, so the rate measures rework rather than plan-completion stage (`ce-verify-work` ships this operational definition). **Derived at read-time** by aggregating drift learnings captured via `ce-compound` + session history — never stored as a number (that would reopen the out-of-scope task-ledger). The proxy for **rework/churn**.
 _Avoid_: conflating with "done-vs-remaining" (that is progress; drift is the redo-shaped subset).
 
 **Track**:
