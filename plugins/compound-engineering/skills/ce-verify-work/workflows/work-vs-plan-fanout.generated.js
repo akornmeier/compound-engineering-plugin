@@ -377,8 +377,14 @@ const BATCH_SIZE = VALIDATION.normalized.batch_size;
 const AGENT_TYPE = VALIDATION.normalized.agent_type;
 const ARTIFACT_DIR = "/tmp/compound-engineering/ce-verify-work/" + RUN_ID;
 
-// Per-batch classifier output: one verdict object per unit (drift-rollup applies
-// the evidence-required-for-done/drifted rule on the way in).
+// Per-batch classifier output: one verdict object per unit. Kept intentionally
+// minimal (no conditional `if/then` for evidence) so it dispatches on any
+// structured-output layer — the live smoke proved this shape works, and a
+// conditional keyword the runtime might reject would risk the silent-empty
+// failure mode. The done/drifted "must cite evidence" rule is carried in the
+// rubric/prompt and ENFORCED deterministically by rollupVerdicts (it drops an
+// uncited done/drifted and the drop count is logged below). The full conditional
+// contract lives in references/verdict-schema.json for the prose fallback + docs.
 const VERDICT_SCHEMA = {
   type: "object",
   required: ["verdicts"],
@@ -490,6 +496,7 @@ const status = failedBatches > 0 ? "degraded" : "complete";
 log(
   "Classified " + UNITS.length + " units in " + batches.length + " batches" +
     (failedBatches ? " (" + failedBatches + " failed)" : "") +
+    (rolled.counts.dropped ? " (" + rolled.counts.dropped + " verdicts dropped — malformed or uncited)" : "") +
     "; drift_rate " + (rolled.drift_rate == null ? "n/a" : rolled.drift_rate.toFixed(2)) +
     (rolled.low_confidence ? " [low_confidence]" : ""),
 );
