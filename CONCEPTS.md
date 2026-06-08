@@ -62,3 +62,11 @@ An explicit opt-in mode that runs a Skill unattended, with no user prompts — i
 
 ### Beta skill
 A parallel copy of a stable Skill, suffixed `-beta`, used to trial a new version alongside the stable one without disrupting users. Invoked manually (model auto-invocation is disabled); promoting it to stable is an orchestration change, not just a rename — every caller must move in the same change so none silently inherits stale defaults.
+
+## Dynamic workflows
+
+### Dynamic workflow
+A Claude-Code-only background orchestration script a Skill hands to the Workflow tool, which fans out Agents and runs deterministic logic in an isolated runtime and returns only a final structured envelope — so the Skill's own context never carries the intermediate work. Used to move fan-out-heavy Skill steps off the main conversation; unavailable on non-Claude Targets, so a Skill that uses one keeps a non-workflow fallback path behind an availability guard.
+
+### Live boundary
+The line between what static tests can verify about a Dynamic workflow and what only the real runtime enforces. The contracts on its far side — how arguments arrive, how a file's contents reach a runtime that cannot read files, which agent identifiers and output schemas the runtime accepts, whether dispatch failures surface — pass every static test yet can fail the first live run, so a mandatory live smoke run is the only gate that proves them.
