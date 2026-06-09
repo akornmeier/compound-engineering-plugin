@@ -22,11 +22,13 @@ This is a **probe**, not a gate. The per-plan drift rate is a single reading for
 
 On any failure, **do not dispatch** and **do not fall back to the prose path** — a contract violation is a caller bug, not a platform gap. Print `invalid_input` with the specific reason and stop. Example: `invalid_input: plan has no Implementation Units (no "### U<n>." headings)`.
 
-**Mint the run id and stage the run directory:**
+**Mint the run id and today's date, and stage the run directory:**
 ```bash
 RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ')
+TODAY=$(date +%F)
 mkdir -p "/tmp/compound-engineering/ce-verify-work/$RUN_ID"
 ```
+`TODAY` (YYYY-MM-DD) stamps the drift event in Phase 4 — the Workflow runtime cannot mint a date (`Date.now()` throws there), so the date must originate here.
 
 ## Phase 2: Classify (guarded)
 
@@ -60,3 +62,23 @@ Render, in this order:
 5. The `unverifiable` units listed separately with their reason (excluded from the denominator).
 
 End with a one-line reminder that this is a per-plan diagnostic reading, not a gate decision.
+
+## Phase 4: Capture the drift event
+
+Persist this run's reading as a durable **drift event** under `docs/drift-events/` (committed) so a future Signal-gate aggregation can read across runs. This is a **best-effort side effect**: Phase 3's verdict table is the primary deliverable and is already delivered — a failed capture must never degrade it. The probe's report-only contract still holds — it appends one telemetry file; it never mutates the plan or the repo's code.
+
+**When to write — gate on a non-empty attempted set:**
+- `status == "invalid_input"` → never write (there was no run).
+- `counts.attempted == 0` (`drift_rate` is `null` — all `remaining`/`unverifiable`) → **skip** and print one line, e.g. `No drift event written — 0 attempted units (no denominator).` These carry no rate signal; capturing only some runs would bias the future aggregate.
+- `counts.attempted > 0` → write exactly one drift event (capture **every** such run, `low_confidence` and `degraded` included — flagged, not dropped, so the aggregation can weight them).
+
+**Assemble the event** per `references/drift-event-contract.md` (format) into the shape in `references/drift-event-template.md`. **Copy the lists verbatim from the returned envelope — do not re-group the flat `units[]` array yourself.** `envelope.grouped` was computed deterministically by the shared `rollupVerdicts`; re-grouping by hand invites misbucketing that would poison the aggregate.
+- Frontmatter: `date` = `TODAY` from Phase 1; `plan` = the plan basename; `run_id` = `envelope.run_id`; `tags: [drift-event, work-vs-plan-verification, ce-verify-work]`.
+- Data block, all verbatim from the envelope: `plan_path`, `run_id`, `low_confidence`, and the four grouped lists (`drifted`, `attempted`, `remaining`, `unverifiable`) from `envelope.grouped`. Set `degraded: true` when `status == "degraded"`, else `false`.
+- `## Cited evidence`: one bullet per attempted (`done`/`drifted`) unit, drawn from `envelope.units[].evidence`.
+
+**Never write `drift_rate` or any precomputed rate, anywhere in the artifact** (ADR 0001). Record the unit lists; the rate is derived at read time as `|drifted| / |attempted|` by the deferred aggregation. A stored rate reopens the out-of-scope task-ledger.
+
+**Write** to `docs/drift-events/<plan-basename>--<run_id>.md` with the platform's file-write tool (Write in Claude Code). **On any failure, log one line and continue** — the report is already delivered.
+
+This phase runs identically after the workflow path and the prose fallback: both produce the same envelope via the shared `rollupVerdicts`, so `envelope.grouped` is present on either path and the event is written once. (If the fallback applied the roll-up rules by hand without the module, group the same surviving verdicts by verdict — `attempted` = `done` + `drifted` IDs in order.)
