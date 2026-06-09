@@ -230,16 +230,24 @@ function parseFields(bodyLines) {
 
 // ---- verdict roll-up -------------------------------------------------------
 
+// Numeric order of a unit's U-id ("U3" -> 3), used to sort the roll-up output
+// into the plan's unit order. A non-numeric id sorts last; the comparator
+// breaks ties by u_id string so the order is total and deterministic.
+function unitOrder(u_id) {
+  const n = parseInt(u_id.slice(1), 10);
+  return Number.isNaN(n) ? Number.POSITIVE_INFINITY : n;
+}
+
 /**
  * Roll an array of `{ u_id, verdict, evidence?, rationale? }` up into the drift
  * rate, verdict counts, ordered verdict table, and the low-confidence flag.
  * Malformed entries (bad verdict, missing u_id, or an uncited done/drifted) are
- * dropped and counted. Deterministic: same input -> byte-identical output.
+ * dropped and counted. Deterministic: same input -> byte-identical output, and
+ * output is sorted by U-number so it does not depend on input order.
  */
 function rollupVerdicts(verdicts) {
   const counts = { done: 0, remaining: 0, drifted: 0, unverifiable: 0, attempted: 0, dropped: 0 };
   const units = [];
-  const unverifiable = [];
 
   for (const raw of Array.isArray(verdicts) ? verdicts : []) {
     if (
@@ -259,8 +267,30 @@ function rollupVerdicts(verdicts) {
     const rationale = typeof raw.rationale === "string" ? raw.rationale : "";
     counts[raw.verdict]++;
     units.push({ u_id: raw.u_id, verdict: raw.verdict, evidence, rationale });
-    if (raw.verdict === "unverifiable") unverifiable.push({ u_id: raw.u_id, reason: rationale });
   }
+
+  // Order by U-number (the plan's unit order), so output does NOT depend on the
+  // model's verdict-emission order on the workflow path — a batch classifier may
+  // return verdicts out of order. This keeps the committed drift-event artifact
+  // byte-stable across runs of the same plan.
+  units.sort((a, b) => unitOrder(a.u_id) - unitOrder(b.u_id) || (a.u_id < b.u_id ? -1 : a.u_id > b.u_id ? 1 : 0));
+
+  const unverifiable = units
+    .filter((u) => u.verdict === "unverifiable")
+    .map((u) => ({ u_id: u.u_id, reason: u.rationale }));
+
+  // Verdict-grouped unit-ID lists derived from the ordered units. The drift-event
+  // capture (ce-verify-work Phase 4) copies these VERBATIM into the artifact's
+  // data block, so an LLM never buckets a unit — the determinism is real at the
+  // source. `attempted` = done + drifted (the rate's denominator); `drifted` is
+  // its numerator. IDs only, never a rate (ADR 0001: derived from
+  // |drifted| / |attempted| at read time).
+  const grouped = {
+    drifted: units.filter((u) => u.verdict === "drifted").map((u) => u.u_id),
+    attempted: units.filter((u) => u.verdict === "done" || u.verdict === "drifted").map((u) => u.u_id),
+    remaining: units.filter((u) => u.verdict === "remaining").map((u) => u.u_id),
+    unverifiable: units.filter((u) => u.verdict === "unverifiable").map((u) => u.u_id),
+  };
 
   counts.attempted = counts.done + counts.drifted;
   const total = counts.done + counts.remaining + counts.drifted + counts.unverifiable;
@@ -273,7 +303,7 @@ function rollupVerdicts(verdicts) {
     total > 0 &&
     (counts.attempted < ATTEMPTED_FLOOR || counts.unverifiable / total >= UNVERIFIABLE_FRACTION);
 
-  return { drift_rate, low_confidence, counts, units, unverifiable };
+  return { drift_rate, low_confidence, counts, units, unverifiable, grouped };
 }
 
 export { parsePlanUnits, rollupVerdicts };

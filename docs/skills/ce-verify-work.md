@@ -38,7 +38,13 @@ Across the loop (ideate → brainstorm → plan → work) there is no reliable r
 
 ## Probe, not gate
 
-The per-plan drift rate is a single diagnostic **reading**, not a threshold decision. The program-level Signal gate consumes an *aggregate* across runs (built from `ce-compound`-captured drift learnings); this probe produces the per-plan readings that would feed that aggregate. The first cut ships the standalone reading — closing the drift→capture loop and the gate aggregation are follow-up work.
+The per-plan drift rate is a single diagnostic **reading**, not a threshold decision. The program-level Signal gate consumes an *aggregate* across runs (built from captured drift events); this probe produces the per-plan readings that feed that aggregate. The first cut shipped the standalone reading; the capture half now exists (see Capture below), so each run's reading is persisted. The gate aggregation and its threshold remain follow-up work.
+
+## Capture
+
+Every probe run with at least one *attempted* unit writes a durable **drift event** to `docs/drift-events/` (committed) — a small per-run record of the run's drifted / attempted / remaining / unverifiable unit lists with cited evidence, named `<plan-basename>--<run_id>.md`. This is the capture half of the rework/churn loop: it persists each reading so a future Signal-gate aggregation can derive the aggregate drift rate across runs.
+
+The event records the cited unit *lists*, never a stored rate — the rate is derived at read time (ADR 0001). Drift events are machine telemetry, deliberately housed outside `docs/solutions/` so learnings research and refresh sweeps never mistake them for human-authored learnings. Runs with no attempted units (no denominator) write nothing, so the eventual aggregate is not biased toward high-drift runs. The aggregation, the Signal gate, and its threshold remain follow-up work; this closes the writer side.
 
 ## Quick Example
 

@@ -1,5 +1,7 @@
-import { readFileSync } from "fs"
-import path from "path"
+import path from "node:path"
+import { spawnSync } from "node:child_process"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { describe, expect, test } from "bun:test"
 import {
   parsePlanUnits,
@@ -114,6 +116,177 @@ describe("small-attempted volatility guard", () => {
 })
 
 // ===========================================================================
+// DRIFT-EVENT CAPTURE — the writer-side projection + artifact contract (U1–U3)
+// ===========================================================================
+//
+// The deterministic core is now real code (rollupVerdicts' grouped lists), so we
+// assert against it directly. The artifact assembly is the SKILL.md Phase 4
+// contract encoded as a test helper that mirrors references/drift-event-template.md
+// — it proves the contract is satisfiable (parser-safe, key-complete, rate-free)
+// given the deterministic lists. That the orchestrator's prose ACTUALLY emits this
+// shape is the live-smoke gate, recorded below.
+
+const FRONTMATTER_VALIDATOR = path.join(
+  process.cwd(),
+  "plugins/compound-engineering/skills/ce-compound/scripts/validate-frontmatter.py",
+)
+
+// A full ce-verify-work envelope: rollupVerdicts' output plus the workflow's
+// outer fields (status, plan_path, run_id) the orchestrator reads in Phase 4.
+function envelopeFrom(
+  map: Record<string, string>,
+  opts: { status?: string; plan_path: string; run_id: string },
+) {
+  const rolled = rollupVerdicts(verdictsFrom(map))
+  return { status: opts.status ?? "complete", ...rolled, plan_path: opts.plan_path, run_id: opts.run_id }
+}
+
+// Phase 4's write gate: skip a contract-violating call (invalid_input) and a
+// no-denominator run (attempted 0); capture everything else.
+function shouldCapture(env: { status: string; counts: { attempted: number } }): boolean {
+  return env.status !== "invalid_input" && env.counts.attempted > 0
+}
+
+// The Phase 4 assembly, encoding references/drift-event-contract.md +
+// drift-event-template.md. Copies envelope.grouped verbatim — never a rate.
+function assembleDriftEvent(
+  env: ReturnType<typeof envelopeFrom>,
+  opts: { today: string; planBasename: string },
+): string {
+  const g = env.grouped
+  const fmt = (xs: string[]) => `[${xs.join(", ")}]`
+  const evidence = env.units
+    .filter((u) => u.verdict === "done" || u.verdict === "drifted")
+    .map((u) => `- ${u.u_id} (${u.verdict}): ${u.evidence.join("; ")}`)
+  return [
+    "---",
+    `date: ${opts.today}`,
+    `plan: ${opts.planBasename}`,
+    `run_id: ${env.run_id}`,
+    "tags: [drift-event, work-vs-plan-verification, ce-verify-work]",
+    "---",
+    "",
+    `# Drift event — ${opts.planBasename} (${env.run_id})`,
+    "",
+    "```yaml",
+    "# machine-read block — copied verbatim from the envelope's grouped lists.",
+    "# The aggregation reads THIS; the rate is derived, never stored.",
+    `plan_path: ${env.plan_path}`,
+    `run_id: ${env.run_id}`,
+    `low_confidence: ${env.low_confidence}`,
+    `degraded: ${env.status === "degraded"}`,
+    `drifted: ${fmt(g.drifted)}`,
+    `attempted: ${fmt(g.attempted)}`,
+    `remaining: ${fmt(g.remaining)}`,
+    `unverifiable: ${fmt(g.unverifiable)}`,
+    "```",
+    "",
+    "## Cited evidence",
+    ...evidence,
+    "",
+  ].join("\n")
+}
+
+const PLAN_BASENAME = "2026-06-07-001-feat-work-vs-plan-verification-probe-plan"
+const RUN_ID = "20260608-143022-a1b2c3d4"
+const PLAN_PATH = `docs/plans/${PLAN_BASENAME}.md`
+const TODAY = "2026-06-08"
+
+describe("drift-event capture — grouped-list projection on the eval fixture", () => {
+  test("the fixture envelope groups to the expected IDs by verdict", () => {
+    const { grouped } = envelopeFrom(GROUND_TRUTH, { plan_path: PLAN_PATH, run_id: RUN_ID })
+    expect(grouped.drifted).toEqual(["U3"])
+    expect(grouped.attempted).toEqual(["U1", "U3", "U5"])
+    expect(grouped.remaining).toEqual(["U2"])
+    expect(grouped.unverifiable).toEqual(["U4"])
+  })
+})
+
+describe("drift-event capture — assembled artifact honors the contract", () => {
+  const env = envelopeFrom(GROUND_TRUTH, { plan_path: PLAN_PATH, run_id: RUN_ID })
+  const artifact = assembleDriftEvent(env, { today: TODAY, planBasename: PLAN_BASENAME })
+
+  test("(a) the data block lists exactly the grouped IDs by verdict", () => {
+    expect(artifact).toContain("drifted: [U3]")
+    expect(artifact).toContain("attempted: [U1, U3, U5]")
+    expect(artifact).toContain("remaining: [U2]")
+    expect(artifact).toContain("unverifiable: [U4]")
+  })
+
+  test("(b) the artifact contains no drift_rate or any precomputed rate", () => {
+    expect(artifact).not.toContain("drift_rate")
+    expect(artifact).not.toMatch(/^\s*rate:/m) // no bare rate field
+    expect(artifact).not.toContain("0.33") // the derived value never leaks in
+  })
+
+  test("(c) the frontmatter passes validate-frontmatter.py (parser-safety, exit 0)", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "drift-event-"))
+    const file = path.join(dir, `${PLAN_BASENAME}--${RUN_ID}.md`)
+    writeFileSync(file, artifact, "utf8")
+    const result = spawnSync("python3", [FRONTMATTER_VALIDATOR, file], { encoding: "utf8" })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("OK:")
+  })
+
+  test("(d) required drift-event keys are present (validator does not check this)", () => {
+    // Frontmatter keys.
+    for (const key of ["date:", "plan:", "run_id:", "tags:"]) expect(artifact).toContain(key)
+    // Data-block keys (the four lists plus the run flags).
+    for (const key of [
+      "plan_path:",
+      "low_confidence:",
+      "degraded:",
+      "drifted:",
+      "attempted:",
+      "remaining:",
+      "unverifiable:",
+    ]) {
+      expect(artifact).toContain(key)
+    }
+    // Cited evidence is drawn from the attempted units.
+    expect(artifact).toContain("## Cited evidence")
+    expect(artifact).toContain("- U3 (drifted):")
+    expect(artifact).toContain("- U1 (done):")
+  })
+})
+
+describe("drift-event capture — write gate (skip / degraded / invalid_input)", () => {
+  test("an attempted-bearing run is captured", () => {
+    const env = envelopeFrom(GROUND_TRUTH, { plan_path: PLAN_PATH, run_id: RUN_ID })
+    expect(shouldCapture(env)).toBe(true)
+    expect(env.counts.attempted).toBeGreaterThan(0)
+  })
+
+  test("an all-remaining run (attempted 0) is skipped — no event assembled", () => {
+    const env = envelopeFrom(
+      { U1: "remaining", U2: "remaining" },
+      { plan_path: PLAN_PATH, run_id: RUN_ID },
+    )
+    expect(env.counts.attempted).toBe(0)
+    expect(env.drift_rate).toBeNull()
+    expect(shouldCapture(env)).toBe(false)
+  })
+
+  test("an invalid_input envelope is never written", () => {
+    const env = envelopeFrom(GROUND_TRUTH, { status: "invalid_input", plan_path: PLAN_PATH, run_id: RUN_ID })
+    expect(shouldCapture(env)).toBe(false)
+  })
+
+  test("a degraded run is captured with degraded: true in the data block", () => {
+    const env = envelopeFrom(GROUND_TRUTH, { status: "degraded", plan_path: PLAN_PATH, run_id: RUN_ID })
+    expect(shouldCapture(env)).toBe(true)
+    const artifact = assembleDriftEvent(env, { today: TODAY, planBasename: PLAN_BASENAME })
+    expect(artifact).toContain("degraded: true")
+  })
+
+  test("a complete run records degraded: false", () => {
+    const env = envelopeFrom(GROUND_TRUTH, { plan_path: PLAN_PATH, run_id: RUN_ID })
+    const artifact = assembleDriftEvent(env, { today: TODAY, planBasename: PLAN_BASENAME })
+    expect(artifact).toContain("degraded: false")
+  })
+})
+
+// ===========================================================================
 // LIVE SMOKE RUN — required acceptance gate (recorded results)
 // ===========================================================================
 //
@@ -162,3 +335,22 @@ describe("small-attempted volatility guard", () => {
 // -> drifted; U5 enum exactly the four verdicts -> done) — confirmed by direct
 // repo inspection, identical to the workflow path. The rate/flag cannot diverge
 // across paths because both call the one rollupVerdicts (asserted above).
+//
+// ---------------------------------------------------------------------------
+// DRIFT-EVENT CAPTURE (Phase 4) — live acceptance gate, PENDING.
+// ---------------------------------------------------------------------------
+// The static assertions above prove the contract is satisfiable from the
+// deterministic grouped lists. The remaining gate — that the orchestrator's
+// Phase 4 prose actually writes the artifact — cannot run in this session:
+// SKILL.md behavior caches at session start (AGENTS.md), so the live capture
+// must be exercised in a FRESH session or via the skill-creator eval path.
+//
+// To run: `/ce-verify-work tests/fixtures/verify-work/sample-plan.md` (Claude
+// Code), then confirm:
+//   - exactly one file at docs/drift-events/<plan-basename>--<run_id>.md;
+//   - its frontmatter passes validate-frontmatter.py (exit 0);
+//   - its data block lists drifted: [U3], attempted: [U1, U3, U5],
+//     remaining: [U2], unverifiable: [U4] — matching the presented verdict
+//     table — with NO drift_rate field anywhere;
+//   - an all-remaining plan writes NO event and prints the skip line.
+// Record the trial here (mirroring the N=3 block above) once run.
