@@ -191,6 +191,7 @@ function assembleDriftEvent(
 const PLAN_BASENAME = "2026-06-07-001-feat-work-vs-plan-verification-probe-plan"
 const RUN_ID = "20260608-143022-a1b2c3d4"
 const PLAN_PATH = `docs/plans/${PLAN_BASENAME}.md`
+const TODAY = "2026-06-08"
 
 describe("drift-event capture — grouped-list projection on the eval fixture", () => {
   test("the fixture envelope groups to the expected IDs by verdict", () => {
@@ -204,7 +205,7 @@ describe("drift-event capture — grouped-list projection on the eval fixture", 
 
 describe("drift-event capture — assembled artifact honors the contract", () => {
   const env = envelopeFrom(GROUND_TRUTH, { plan_path: PLAN_PATH, run_id: RUN_ID })
-  const artifact = assembleDriftEvent(env, { today: "2026-06-08", planBasename: PLAN_BASENAME })
+  const artifact = assembleDriftEvent(env, { today: TODAY, planBasename: PLAN_BASENAME })
 
   test("(a) the data block lists exactly the grouped IDs by verdict", () => {
     expect(artifact).toContain("drifted: [U3]")
@@ -267,13 +268,13 @@ describe("drift-event capture — write gate (skip / degraded / invalid_input)",
   test("a degraded run is captured with degraded: true in the data block", () => {
     const env = envelopeFrom(GROUND_TRUTH, { status: "degraded", plan_path: PLAN_PATH, run_id: RUN_ID })
     expect(shouldCapture(env)).toBe(true)
-    const artifact = assembleDriftEvent(env, { today: "2026-06-08", planBasename: PLAN_BASENAME })
+    const artifact = assembleDriftEvent(env, { today: TODAY, planBasename: PLAN_BASENAME })
     expect(artifact).toContain("degraded: true")
   })
 
   test("a complete run records degraded: false", () => {
     const env = envelopeFrom(GROUND_TRUTH, { plan_path: PLAN_PATH, run_id: RUN_ID })
-    const artifact = assembleDriftEvent(env, { today: "2026-06-08", planBasename: PLAN_BASENAME })
+    const artifact = assembleDriftEvent(env, { today: TODAY, planBasename: PLAN_BASENAME })
     expect(artifact).toContain("degraded: false")
   })
 })
