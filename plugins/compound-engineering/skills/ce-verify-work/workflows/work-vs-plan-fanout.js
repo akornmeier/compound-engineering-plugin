@@ -262,6 +262,9 @@ return {
   counts: { ...rolled.counts, failed_batches: failedBatches, total_units: UNITS.length },
   units: rolled.units,
   unverifiable: rolled.unverifiable,
+  // Verdict-grouped unit-ID lists for the drift-event capture (Phase 4) to copy
+  // verbatim — the determinism lives in rollupVerdicts, not in an LLM re-group.
+  grouped: rolled.grouped,
   plan_path: PLAN_PATH,
   artifact_path: ARTIFACT_DIR + "/",
   run_id: RUN_ID,

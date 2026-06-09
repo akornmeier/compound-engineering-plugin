@@ -292,6 +292,13 @@ function rollupVerdicts(verdicts) {
   const counts = { done: 0, remaining: 0, drifted: 0, unverifiable: 0, attempted: 0, dropped: 0 };
   const units = [];
   const unverifiable = [];
+  // Verdict-grouped unit-ID lists collected in the same pass that counts. The
+  // drift-event capture (ce-verify-work Phase 4) copies these VERBATIM into the
+  // artifact's data block, so an LLM never buckets a unit — the determinism is
+  // real at the source. `attempted` = done + drifted IDs in document order, the
+  // rate's denominator; `drifted` is its numerator. IDs only, never a rate
+  // (ADR 0001: the rate is derived from |drifted| / |attempted| at read time).
+  const grouped = { drifted: [], attempted: [], remaining: [], unverifiable: [] };
 
   for (const raw of Array.isArray(verdicts) ? verdicts : []) {
     if (
@@ -312,6 +319,12 @@ function rollupVerdicts(verdicts) {
     counts[raw.verdict]++;
     units.push({ u_id: raw.u_id, verdict: raw.verdict, evidence, rationale });
     if (raw.verdict === "unverifiable") unverifiable.push({ u_id: raw.u_id, reason: rationale });
+    // Group surviving (non-dropped) IDs. attempted unions done + drifted, in the
+    // order encountered, so |attempted| == counts.attempted by construction.
+    if (raw.verdict === "done" || raw.verdict === "drifted") grouped.attempted.push(raw.u_id);
+    if (raw.verdict === "drifted") grouped.drifted.push(raw.u_id);
+    else if (raw.verdict === "remaining") grouped.remaining.push(raw.u_id);
+    else if (raw.verdict === "unverifiable") grouped.unverifiable.push(raw.u_id);
   }
 
   counts.attempted = counts.done + counts.drifted;
@@ -325,7 +338,7 @@ function rollupVerdicts(verdicts) {
     total > 0 &&
     (counts.attempted < ATTEMPTED_FLOOR || counts.unverifiable / total >= UNVERIFIABLE_FRACTION);
 
-  return { drift_rate, low_confidence, counts, units, unverifiable };
+  return { drift_rate, low_confidence, counts, units, unverifiable, grouped };
 }
 
 
@@ -544,6 +557,9 @@ return {
   counts: { ...rolled.counts, failed_batches: failedBatches, total_units: UNITS.length },
   units: rolled.units,
   unverifiable: rolled.unverifiable,
+  // Verdict-grouped unit-ID lists for the drift-event capture (Phase 4) to copy
+  // verbatim — the determinism lives in rollupVerdicts, not in an LLM re-group.
+  grouped: rolled.grouped,
   plan_path: PLAN_PATH,
   artifact_path: ARTIFACT_DIR + "/",
   run_id: RUN_ID,

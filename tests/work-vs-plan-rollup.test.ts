@@ -441,6 +441,81 @@ describe("rollupVerdicts — determinism", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// rollupVerdicts — verdict-grouped unit-ID lists (the writer-side projection the
+// drift-event capture copies verbatim). The grouped lists must agree with the
+// counts exactly, so the captured artifact's data block cannot misbucket a unit.
+// ---------------------------------------------------------------------------
+
+describe("rollupVerdicts — grouped unit-ID lists", () => {
+  // Mirrors tests/fixtures/verify-work/sample-plan.md: U1 done, U2 remaining,
+  // U3 drifted, U4 unverifiable, U5 done.
+  const fixture = [
+    { u_id: "U1", verdict: "done", evidence: ev("a") },
+    { u_id: "U2", verdict: "remaining" },
+    { u_id: "U3", verdict: "drifted", evidence: ev("c") },
+    { u_id: "U4", verdict: "unverifiable", rationale: "behavioral" },
+    { u_id: "U5", verdict: "done", evidence: ev("e") },
+  ]
+
+  test("projects each verdict to its ordered unit-ID list; attempted = done+drifted in order", () => {
+    const { grouped } = rollupVerdicts(fixture)
+    expect(grouped.drifted).toEqual(["U3"])
+    expect(grouped.attempted).toEqual(["U1", "U3", "U5"]) // done+drifted, document order
+    expect(grouped.remaining).toEqual(["U2"])
+    expect(grouped.unverifiable).toEqual(["U4"])
+  })
+
+  test("attempted is exactly done+drifted IDs; its length equals counts.attempted", () => {
+    const out = rollupVerdicts(fixture)
+    const doneIds = out.units.filter((u) => u.verdict === "done").map((u) => u.u_id)
+    const driftedIds = out.units.filter((u) => u.verdict === "drifted").map((u) => u.u_id)
+    expect(new Set(out.grouped.attempted)).toEqual(new Set([...doneIds, ...driftedIds]))
+    expect(out.grouped.attempted.length).toBe(out.counts.attempted)
+    expect(out.grouped.drifted.length).toBe(out.counts.drifted)
+    expect(out.grouped.remaining.length).toBe(out.counts.remaining)
+    expect(out.grouped.unverifiable.length).toBe(out.counts.unverifiable)
+  })
+
+  test("dropped/malformed verdicts appear in no grouped list", () => {
+    const out = rollupVerdicts([
+      { u_id: "U1", verdict: "done", evidence: ev("a") },
+      { u_id: "U2", verdict: "bogus", evidence: ev("x") }, // bad enum -> dropped
+      { u_id: "", verdict: "drifted", evidence: ev("y") }, // empty u_id -> dropped
+      { u_id: "U4", verdict: "done", evidence: [] }, // uncited done -> dropped
+    ])
+    const all = [
+      ...out.grouped.drifted,
+      ...out.grouped.attempted,
+      ...out.grouped.remaining,
+      ...out.grouped.unverifiable,
+    ]
+    expect(all).not.toContain("U2")
+    expect(all).not.toContain("U4")
+    expect(all).not.toContain("") // the empty-u_id drift never lands
+    expect(out.grouped.attempted).toEqual(["U1"])
+  })
+
+  test("empty / all-remaining input yields empty attempted+drifted, populated remaining, no throw", () => {
+    const empty = rollupVerdicts([])
+    expect(empty.grouped).toEqual({ drifted: [], attempted: [], remaining: [], unverifiable: [] })
+
+    const allRemaining = rollupVerdicts([
+      { u_id: "U1", verdict: "remaining" },
+      { u_id: "U2", verdict: "remaining" },
+    ])
+    expect(allRemaining.grouped.attempted).toEqual([])
+    expect(allRemaining.grouped.drifted).toEqual([])
+    expect(allRemaining.grouped.remaining).toEqual(["U1", "U2"])
+  })
+
+  test("byte-identical grouped lists across repeated runs on a fixed set", () => {
+    expect(JSON.stringify(rollupVerdicts(fixture).grouped)).toBe(
+      JSON.stringify(rollupVerdicts(fixture).grouped),
+    )
+  })
+})
+
 // U2 — the verdict-schema.json enum is the single source of truth shared with
 // the U1 roll-up. This consistency check fails if the two drift apart.
 describe("verdict-schema.json ↔ drift-rollup enum consistency", () => {
