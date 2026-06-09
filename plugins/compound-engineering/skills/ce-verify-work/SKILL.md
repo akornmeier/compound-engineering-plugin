@@ -81,4 +81,4 @@ Persist this run's reading as a durable **drift event** under `docs/drift-events
 
 **Write** to `docs/drift-events/<plan-basename>--<run_id>.md` with the platform's file-write tool (Write in Claude Code). **On any failure, log one line and continue** — the report is already delivered.
 
-This phase runs identically after the workflow path and the prose fallback: both produce the same envelope via the shared `rollupVerdicts`, so `envelope.grouped` is present on either path and the event is written once. (If the fallback applied the roll-up rules by hand without the module, group the same surviving verdicts by verdict — `attempted` = `done` + `drifted` IDs in order.)
+This phase runs identically after the workflow path and the prose fallback: both produce the same envelope via the shared `rollupVerdicts`, so `envelope.grouped` is present on either path and the event is written once. (If the fallback applied the roll-up rules by hand without the module, group the same surviving verdicts by verdict — `attempted` = `done` + `drifted`, each list ordered by U-number.)

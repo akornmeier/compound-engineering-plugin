@@ -1,7 +1,6 @@
-import { readFileSync } from "fs"
-import path from "path"
+import path from "node:path"
 import { spawnSync } from "node:child_process"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { describe, expect, test } from "bun:test"
 import {

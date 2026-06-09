@@ -461,7 +461,7 @@ describe("rollupVerdicts — grouped unit-ID lists", () => {
   test("projects each verdict to its ordered unit-ID list; attempted = done+drifted in order", () => {
     const { grouped } = rollupVerdicts(fixture)
     expect(grouped.drifted).toEqual(["U3"])
-    expect(grouped.attempted).toEqual(["U1", "U3", "U5"]) // done+drifted, document order
+    expect(grouped.attempted).toEqual(["U1", "U3", "U5"]) // done+drifted, U-number order
     expect(grouped.remaining).toEqual(["U2"])
     expect(grouped.unverifiable).toEqual(["U4"])
   })
@@ -513,6 +513,22 @@ describe("rollupVerdicts — grouped unit-ID lists", () => {
     expect(JSON.stringify(rollupVerdicts(fixture).grouped)).toBe(
       JSON.stringify(rollupVerdicts(fixture).grouped),
     )
+  })
+
+  test("orders output by U-number even when verdicts arrive out of order (workflow emission)", () => {
+    // A batch classifier may emit verdicts out of plan order; the roll-up must
+    // sort to the plan's unit order so the committed artifact is run-stable.
+    const scrambled = rollupVerdicts([
+      { u_id: "U3", verdict: "drifted", evidence: ev("c") },
+      { u_id: "U10", verdict: "done", evidence: ev("j") },
+      { u_id: "U1", verdict: "done", evidence: ev("a") },
+      { u_id: "U2", verdict: "remaining" },
+    ])
+    // U-number order (numeric, not lexical — U10 sorts after U2, not before it).
+    expect(scrambled.units.map((u) => u.u_id)).toEqual(["U1", "U2", "U3", "U10"])
+    expect(scrambled.grouped.attempted).toEqual(["U1", "U3", "U10"])
+    expect(scrambled.grouped.drifted).toEqual(["U3"])
+    expect(scrambled.grouped.remaining).toEqual(["U2"])
   })
 })
 
