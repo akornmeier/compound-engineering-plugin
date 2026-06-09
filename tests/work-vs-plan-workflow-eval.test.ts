@@ -232,8 +232,16 @@ describe("drift-event capture — assembled artifact honors the contract", () =>
   test("(d) required drift-event keys are present (validator does not check this)", () => {
     // Frontmatter keys.
     for (const key of ["date:", "plan:", "run_id:", "tags:"]) expect(artifact).toContain(key)
-    // Data-block keys.
-    for (const key of ["plan_path:", "drifted:", "attempted:", "remaining:", "unverifiable:"]) {
+    // Data-block keys (the four lists plus the run flags).
+    for (const key of [
+      "plan_path:",
+      "low_confidence:",
+      "degraded:",
+      "drifted:",
+      "attempted:",
+      "remaining:",
+      "unverifiable:",
+    ]) {
       expect(artifact).toContain(key)
     }
     // Cited evidence is drawn from the attempted units.

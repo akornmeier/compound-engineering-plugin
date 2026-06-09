@@ -6,6 +6,12 @@ drifted/attempted unit lists — so a future Signal-gate aggregation can read
 across many runs and derive a drift rate. The capture is the writer side; the
 aggregation/reader is deferred follow-up work.
 
+A run **qualifies** when it has a non-empty attempted set: write exactly one
+event when `counts.attempted > 0`; skip a run with `attempted == 0` (no
+denominator) and never write when `status == "invalid_input"` (there was no
+run). See the skill's Phase 4 for the full gate. `low_confidence` and
+`degraded` runs still qualify — they are captured with their flag, not dropped.
+
 ## Location
 
 Write drift events to **`docs/drift-events/`** — a top-level docs directory,
