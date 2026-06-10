@@ -337,20 +337,40 @@ describe("drift-event capture — write gate (skip / degraded / invalid_input)",
 // across paths because both call the one rollupVerdicts (asserted above).
 //
 // ---------------------------------------------------------------------------
-// DRIFT-EVENT CAPTURE (Phase 4) — live acceptance gate, PENDING.
+// DRIFT-EVENT CAPTURE (Phase 4) — live acceptance gate, RECORDED.
 // ---------------------------------------------------------------------------
 // The static assertions above prove the contract is satisfiable from the
-// deterministic grouped lists. The remaining gate — that the orchestrator's
-// Phase 4 prose actually writes the artifact — cannot run in this session:
-// SKILL.md behavior caches at session start (AGENTS.md), so the live capture
-// must be exercised in a FRESH session or via the skill-creator eval path.
+// deterministic grouped lists. The live gate — that the orchestrator's Phase 4
+// prose actually writes (and skips) the artifact — was exercised in fresh
+// sessions (SKILL.md behavior caches at session start, per AGENTS.md).
+// Rerun via `/ce-verify-work tests/fixtures/verify-work/sample-plan.md`.
 //
-// To run: `/ce-verify-work tests/fixtures/verify-work/sample-plan.md` (Claude
-// Code), then confirm:
-//   - exactly one file at docs/drift-events/<plan-basename>--<run_id>.md;
-//   - its frontmatter passes validate-frontmatter.py (exit 0);
-//   - its data block lists drifted: [U3], attempted: [U1, U3, U5],
+// RECORDED — 2 live trials, 2026-06-09, fresh sessions, real skill dispatch:
+//
+// Positive case — `/ce-verify-work tests/fixtures/verify-work/sample-plan.md`
+// (run_id 20260609-162454-e5ad7d57). All gate conditions held:
+//   - exactly one file written: docs/drift-events/sample-plan--20260609-162454-e5ad7d57.md
+//     (path-safe run_id, <plan-basename>--<run_id>.md naming).
+//   - frontmatter passed validate-frontmatter.py (exit 0, "OK:").
+//   - data block listed drifted: [U3], attempted: [U1, U3, U5],
 //     remaining: [U2], unverifiable: [U4] — matching the presented verdict
-//     table — with NO drift_rate field anywhere;
-//   - an all-remaining plan writes NO event and prints the skip line.
-// Record the trial here (mirroring the N=3 block above) once run.
+//     table and the fixture's ground truth — with NO drift_rate anywhere.
+//   - flags read 1:1 from the envelope: low_confidence: false (attempted 3,
+//     at the floor, not below), degraded: false (status complete).
+//   - Cited evidence covered exactly the attempted units (U1, U3, U5), with
+//     real verification output (file/line cites for done; the failed
+//     `grep -niE '--json|run-cach|caching|plan hash'` for drifted U3).
+//
+// Negative case — an all-remaining throwaway plan (2 units pointing at
+// never-created files, staged under /tmp; not committed). All held:
+//   - both units classified remaining; counts: attempted (done + drifted) = 0;
+//     drift rate reported n/a (no denominator) with the low-confidence warning.
+//   - the skip line printed: "Phase 4 — drift event capture: skipped per the
+//     write gate. No drift event written — 0 attempted units (no denominator)."
+//   - docs/drift-events/ unchanged — no file written.
+//
+// Artifact disposition (user decision, 2026-06-09): the fixture-derived event
+// was deleted after recording. docs/drift-events/ is real telemetry the future
+// Signal-gate aggregation will read; a synthetic fixture reading (33% drift)
+// stays out of it so the aggregation never needs a fixture-filtering rule.
+// This block is the durable smoke evidence, mirroring the N=3 block above.
