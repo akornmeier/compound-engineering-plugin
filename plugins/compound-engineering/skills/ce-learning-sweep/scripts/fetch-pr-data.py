@@ -108,7 +108,7 @@ def emit(envelope: dict) -> NoReturn:
 
 
 def fail_internal(msg: str) -> NoReturn:
-    """Reserve non-zero exit for genuinely unexpected internal errors."""
+    """Write msg to stderr and exit 2 (unexpected internal error)."""
     sys.stderr.write(f"fetch-pr-data: {msg}\n")
     sys.exit(2)
 
@@ -435,8 +435,7 @@ def main(argv) -> None:
     # --- Mining (status ok). Diff and commits are primary; their failure is
     # terminal (fetch_failed). Threads are degradable.
 
-    # Commits via gh pr view --json commits (survives squash merge, verified
-    # live against this repo's PR #13).
+    # Survives squash merge (verified live against this repo's PR #13).
     ok_commits, commits_payload = gh_json([
         "pr", "view", str(number),
         "--repo", f"{owner}/{repo}",
@@ -473,13 +472,12 @@ def main(argv) -> None:
         })
 
     filtered_diff, excluded_paths = filter_diff(diff_proc.stdout)
-    diff_truncated = len(filtered_diff.encode("utf-8")) > MAX_DIFF_BYTES
+    diff_bytes = filtered_diff.encode("utf-8")
+    diff_truncated = len(diff_bytes) > MAX_DIFF_BYTES
     if diff_truncated:
         # Truncate on a byte boundary, then back off to the last clean newline
         # so the cut diff stays line-aligned.
-        clipped = filtered_diff.encode("utf-8")[:MAX_DIFF_BYTES].decode(
-            "utf-8", errors="ignore"
-        )
+        clipped = diff_bytes[:MAX_DIFF_BYTES].decode("utf-8", errors="ignore")
         nl = clipped.rfind("\n")
         filtered_diff = clipped[:nl] if nl > 0 else clipped
 
@@ -490,7 +488,7 @@ def main(argv) -> None:
         "excluded_paths": excluded_paths,
         "truncations": {
             "diff": diff_truncated,
-            "threads": bool(threads_truncated),
+            "threads": threads_truncated,
         },
     }
     degraded_inputs: list[str] = []

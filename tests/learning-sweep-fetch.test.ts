@@ -235,7 +235,6 @@ describe("fetch-pr-data: degradation and caps", () => {
     expect(envelope.status).toBe("ok")
     expect(envelope.flags.degraded_inputs).toContain("review_threads")
     expect(envelope.threads_raw).toEqual([])
-    // Proceeds on diff + commits.
     expect(envelope.diff_raw).toContain("src/widget.ts")
     expect(envelope.commits_raw).toHaveLength(2)
   })
@@ -243,13 +242,10 @@ describe("fetch-pr-data: degradation and caps", () => {
   test("lockfile and generated-file hunks excluded; exclusion noted in envelope", async () => {
     const { envelope } = await run()
     expect(envelope.status).toBe("ok")
-    // Real code hunk kept.
     expect(envelope.diff_raw).toContain("src/widget.ts")
-    // Lockfile, generated dir, and minified bundle hunks dropped.
     expect(envelope.diff_raw).not.toContain("bun.lock")
     expect(envelope.diff_raw).not.toContain("dist/bundle.js")
     expect(envelope.diff_raw).not.toContain("assets/app.min.js")
-    // Exclusion disclosed through the flags mechanism.
     expect(envelope.flags.excluded_paths).toContain("bun.lock")
     expect(envelope.flags.excluded_paths).toContain("dist/bundle.js")
     expect(envelope.flags.excluded_paths).toContain("assets/app.min.js")
@@ -320,66 +316,23 @@ describe("fetch-pr-data: named non-ok states", () => {
     expect(envelope.status).toBe("not_found")
   })
 
-  test("open PR -> not_merged with detail=open", async () => {
-    const openState = path.join(os.tmpdir(), `ls-open-${Date.now()}.json`)
+  // Draft is asserted distinct from open: both have state OPEN, only isDraft differs.
+  test.each([
+    ["open", { state: "OPEN", isDraft: false }],
+    ["draft", { state: "OPEN", isDraft: true }],
+    ["closed_unmerged", { state: "CLOSED", isDraft: false }],
+  ])("non-merged PR -> not_merged with detail=%s", async (detail, stateFields) => {
+    const stateFile = path.join(os.tmpdir(), `ls-${detail}-${Date.now()}.json`)
     fs.writeFileSync(
-      openState,
-      JSON.stringify({
-        state: "OPEN",
-        mergedAt: null,
-        isDraft: false,
-        number: 42,
-        title: "open one",
-      }),
+      stateFile,
+      JSON.stringify({ ...stateFields, mergedAt: null, number: 42, title: `${detail} one` }),
     )
     try {
-      const { envelope } = await run({ env: { GH_SHIM_STATE_FILE: openState } })
+      const { envelope } = await run({ env: { GH_SHIM_STATE_FILE: stateFile } })
       expect(envelope.status).toBe("not_merged")
-      expect(envelope.detail).toBe("open")
+      expect(envelope.detail).toBe(detail)
     } finally {
-      fs.rmSync(openState, { force: true })
-    }
-  })
-
-  test("draft PR -> not_merged with detail=draft (distinct from open)", async () => {
-    const draftState = path.join(os.tmpdir(), `ls-draft-${Date.now()}.json`)
-    fs.writeFileSync(
-      draftState,
-      JSON.stringify({
-        state: "OPEN",
-        mergedAt: null,
-        isDraft: true,
-        number: 42,
-        title: "draft one",
-      }),
-    )
-    try {
-      const { envelope } = await run({ env: { GH_SHIM_STATE_FILE: draftState } })
-      expect(envelope.status).toBe("not_merged")
-      expect(envelope.detail).toBe("draft")
-    } finally {
-      fs.rmSync(draftState, { force: true })
-    }
-  })
-
-  test("closed-unmerged PR -> not_merged with detail=closed_unmerged", async () => {
-    const closedState = path.join(os.tmpdir(), `ls-closed-${Date.now()}.json`)
-    fs.writeFileSync(
-      closedState,
-      JSON.stringify({
-        state: "CLOSED",
-        mergedAt: null,
-        isDraft: false,
-        number: 42,
-        title: "closed one",
-      }),
-    )
-    try {
-      const { envelope } = await run({ env: { GH_SHIM_STATE_FILE: closedState } })
-      expect(envelope.status).toBe("not_merged")
-      expect(envelope.detail).toBe("closed_unmerged")
-    } finally {
-      fs.rmSync(closedState, { force: true })
+      fs.rmSync(stateFile, { force: true })
     }
   })
 

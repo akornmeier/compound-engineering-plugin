@@ -41,6 +41,8 @@ import sys
 # from a `category` mapped in.
 PROBLEM_TYPE_KEYS = ("problem_type", "category")
 DATE_KEYS = ("date", "created")
+# All scalar frontmatter keys the index extracts; everything else is ignored.
+SCALAR_KEYS = frozenset(("title", "module")) | frozenset(PROBLEM_TYPE_KEYS) | frozenset(DATE_KEYS)
 
 
 def split_frontmatter(text):
@@ -94,8 +96,7 @@ def parse_frontmatter(fm_lines):
             i += consumed
             continue
 
-        # Scalar fields we care about. Ignore everything else.
-        if key in ("title", "module") or key in PROBLEM_TYPE_KEYS or key in DATE_KEYS:
+        if key in SCALAR_KEYS:
             if val:
                 fields[key] = unquote(val)
         i += 1
