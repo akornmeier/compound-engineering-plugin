@@ -1,7 +1,7 @@
 ---
 title: "feat: ce-learning-sweep — report-only merged-PR learning sweep"
 type: feat
-status: active
+status: completed
 date: 2026-06-09
 origin: docs/brainstorms/2026-06-09-batch-learning-capture-requirements.md
 ---
