@@ -79,6 +79,10 @@ MAX_COMMENTS_PER_THREAD = 20
 # Per-page size for the GraphQL thread query (matched to gh's --paginate loop).
 THREADS_PAGE_SIZE = 100
 
+# Wall-clock ceiling for every gh subprocess. Without it a stalled API hangs the
+# script indefinitely; on timeout each caller maps to its own non-ok state.
+GH_TIMEOUT_SECONDS = 60
+
 # Paths excluded from the mined diff: lockfiles + generated/minified artifacts.
 # A learning never lives in a regenerated lockfile, and the raw bytes crowd out
 # real signal. Matched against the diff's ``+++ b/<path>`` (and ``--- a/<path>``
@@ -96,8 +100,12 @@ LOCKFILE_NAMES = {
 }
 # Suffix-based exclusions (lockfiles by extension, minified bundles).
 EXCLUDE_SUFFIXES = (".lock", ".min.js", ".min.css")
-# Path-segment exclusions: any hunk whose file sits under a generated dir.
-GENERATED_DIR_SEGMENTS = ("node_modules/", "dist/", "build/", "vendor/", ".next/")
+# Path-segment exclusions: any hunk whose file sits under a generated dir at
+# any depth. Matched per path segment (not substring) so a legitimate path like
+# ``src/redist/x.js`` is kept while ``pkg/dist/x.js`` is excluded.
+GENERATED_DIR_SEGMENTS = frozenset(
+    {"node_modules", "dist", "build", "vendor", ".next"}
+)
 
 
 def emit(envelope: dict) -> NoReturn:
@@ -116,56 +124,69 @@ def fail_internal(msg: str) -> NoReturn:
 # --- Reference parsing and repo resolution ---------------------------------
 
 _URL_RE = re.compile(
-    r"^https?://[^/]+/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<num>\d+)\b"
+    r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<num>\d+)\b"
 )
 _SLUG_RE = re.compile(r"^(?P<owner>[^/\s]+)/(?P<repo>[^/#\s]+)#(?P<num>\d+)$")
 _BARE_RE = re.compile(r"^#?(?P<num>\d+)$")
 
 
 def parse_ref(ref: str):
-    """Return (owner_or_None, repo_or_None, number) from a PR reference.
+    """Return (owner_or_None, repo_or_None, number, host_or_None) from a ref.
 
     A bare/``#`` number carries no repo (owner/repo are None and resolve from
     origin). URL and ``owner/repo#n`` forms carry an explicit repo that the
-    caller checks against origin.
+    caller checks against origin. Only the URL form carries a host; bare/slug
+    refs return None for it (no host to check).
     """
     ref = ref.strip()
     m = _URL_RE.match(ref)
     if m:
-        return m.group("owner"), m.group("repo"), int(m.group("num"))
+        return m.group("owner"), m.group("repo"), int(m.group("num")), m.group("host")
     m = _SLUG_RE.match(ref)
     if m:
-        return m.group("owner"), m.group("repo"), int(m.group("num"))
+        return m.group("owner"), m.group("repo"), int(m.group("num")), None
     m = _BARE_RE.match(ref)
     if m:
-        return None, None, int(m.group("num"))
+        return None, None, int(m.group("num")), None
     fail_internal(f"unrecognized PR reference: {ref!r}")
 
 
+_ORIGIN_HOST_RE = re.compile(
+    r"^(?:git@(?P<ssh>[^:]+):|ssh://git@(?P<sshurl>[^/]+)/|https?://(?P<http>[^/]+)/)"
+)
+
+
 def origin_slug():
-    """Resolve (owner, repo) from the checkout's origin remote.
+    """Resolve (owner, repo, host) from the checkout's origin remote.
 
     Anchor on origin -- the branch's push target / where its PR lives -- never
     on gh's configured default-repo, which points at the upstream parent in a
-    fork and would query a foreign repo.
+    fork and would query a foreign repo. ``host`` is the forge host parsed from
+    the remote's transport prefix (or None when it cannot be determined), used
+    to reject a URL ref whose host differs from origin's.
     """
     try:
         url = subprocess.run(
             ["git", "remote", "get-url", "origin"],
             capture_output=True, text=True, check=False,
+            timeout=GH_TIMEOUT_SECONDS,
         ).stdout.strip()
-    except OSError:
-        return None, None
+    except (OSError, subprocess.TimeoutExpired):
+        return None, None, None
     if not url:
-        return None, None
+        return None, None, None
+    hm = _ORIGIN_HOST_RE.match(url)
+    host = None
+    if hm:
+        host = hm.group("ssh") or hm.group("sshurl") or hm.group("http")
     # Strip the transport prefix (git@host:, ssh://git@host/, https://host/)
     # and a trailing .git, leaving owner/repo.
     slug = re.sub(r"^(git@[^:]+:|ssh://git@[^/]+/|https?://[^/]+/)", "", url)
     slug = re.sub(r"\.git$", "", slug)
     parts = slug.split("/")
     if len(parts) < 2 or not parts[0] or not parts[1]:
-        return None, None
-    return parts[0], parts[1]
+        return None, None, host
+    return parts[0], parts[1], host
 
 
 # --- gh availability -------------------------------------------------------
@@ -180,8 +201,9 @@ def gh_available() -> bool:
         probe = subprocess.run(
             ["gh", "auth", "status"],
             capture_output=True, text=True, check=False,
+            timeout=GH_TIMEOUT_SECONDS,
         )
-    except (OSError, FileNotFoundError):
+    except (OSError, FileNotFoundError, subprocess.TimeoutExpired):
         return False
     return probe.returncode == 0
 
@@ -195,8 +217,9 @@ def gh_json(args):
     try:
         proc = subprocess.run(
             ["gh"] + args, capture_output=True, text=True, check=False,
+            timeout=GH_TIMEOUT_SECONDS,
         )
-    except (OSError, FileNotFoundError) as exc:
+    except (OSError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
         return False, str(exc)
     if proc.returncode != 0:
         return False, proc.stderr
@@ -227,7 +250,7 @@ def _is_excluded(path: str) -> bool:
         return True
     if path.endswith(EXCLUDE_SUFFIXES):
         return True
-    if any(seg in path for seg in GENERATED_DIR_SEGMENTS):
+    if any(seg in GENERATED_DIR_SEGMENTS for seg in path.split("/")):
         return True
     return False
 
@@ -292,6 +315,7 @@ query Threads($owner: String!, $repo: String!, $pr: Int!, $endCursor: String) {
           path
           line
           comments(first: %d) {
+            totalCount
             nodes {
               author { login }
               body
@@ -308,12 +332,13 @@ query Threads($owner: String!, $repo: String!, $pr: Int!, $endCursor: String) {
 
 
 def fetch_threads(owner: str, repo: str, number: int):
-    """Return (ok, threads_list_or_None, truncated_bool).
+    """Return (ok, threads_list_or_None, truncated_bool, comments_truncated_bool).
 
     ok=False means threads were inaccessible while gh otherwise works -> the
     caller degrades rather than fails. ``--paginate --slurp`` returns a JSON
     array of per-page response objects; we flatten ``reviewThreads.nodes``
-    across pages into one complete list.
+    across pages into one complete list. ``comments_truncated_bool`` is True
+    when any kept thread held more comments than the per-thread cap fetched.
     """
     try:
         proc = subprocess.run(
@@ -325,15 +350,16 @@ def fetch_threads(owner: str, repo: str, number: int):
                 "-f", f"query={_THREADS_QUERY}",
             ],
             capture_output=True, text=True, check=False,
+            timeout=GH_TIMEOUT_SECONDS,
         )
-    except (OSError, FileNotFoundError):
-        return False, None, False
+    except (OSError, FileNotFoundError, subprocess.TimeoutExpired):
+        return False, None, False, False
     if proc.returncode != 0:
-        return False, None, False
+        return False, None, False, False
     try:
         pages = json.loads(proc.stdout)
     except json.JSONDecodeError:
-        return False, None, False
+        return False, None, False, False
 
     nodes: list = []
     for page in pages:
@@ -349,7 +375,13 @@ def fetch_threads(owner: str, repo: str, number: int):
     truncated = len(nodes) > MAX_THREADS
     if truncated:
         nodes = nodes[:MAX_THREADS]
-    return True, nodes, truncated
+    # Disclose dropped inline comments: comments(first: N) silently caps the
+    # nodes, so flag when any kept thread's totalCount exceeds what we fetched.
+    comments_truncated = any(
+        (n.get("comments") or {}).get("totalCount", 0) > MAX_COMMENTS_PER_THREAD
+        for n in nodes
+    )
+    return True, nodes, truncated, comments_truncated
 
 
 # --- Main state machine ----------------------------------------------------
@@ -358,12 +390,32 @@ def main(argv) -> None:
     if len(argv) != 2:
         fail_internal(f"usage: {os.path.basename(argv[0])} <pr-ref>")
 
-    ref_owner, ref_repo, number = parse_ref(argv[1])
+    ref_owner, ref_repo, number, ref_host = parse_ref(argv[1])
 
     # Repo-match guard: a ref naming an explicit repo must match origin. We
     # check this before touching gh so a cross-repo ref skips cheaply.
-    o_owner, o_repo = origin_slug()
+    o_owner, o_repo, o_host = origin_slug()
     if ref_owner is not None and ref_repo is not None:
+        if o_owner is None or o_repo is None:
+            # The ref names a repo but origin is unresolvable, so there is no
+            # origin to validate against -> forge context is missing (no_forge),
+            # not a genuine cross-repo mismatch.
+            emit({
+                "status": "no_forge",
+                "pr": number,
+                "detail": "could not resolve origin repository",
+            })
+        # URL refs also carry a host; reject one pointing at a different forge
+        # host even when owner/repo match, since the slug alone is ambiguous
+        # across forges. Bare/slug refs have no host and skip this check.
+        if ref_host is not None and o_host is not None and ref_host != o_host:
+            emit({
+                "status": "repo_mismatch",
+                "pr": number,
+                "detail": (
+                    f"ref host {ref_host} does not match origin host {o_host}"
+                ),
+            })
         if (ref_owner, ref_repo) != (o_owner, o_repo):
             emit({
                 "status": "repo_mismatch",
@@ -429,7 +481,7 @@ def main(argv) -> None:
             "status": "not_merged",
             "pr": number,
             "detail": detail,
-            "title": title,
+            "title_raw": title,
         })
 
     # --- Mining (status ok). Diff and commits are primary; their failure is
@@ -461,8 +513,9 @@ def main(argv) -> None:
         diff_proc = subprocess.run(
             ["gh", "pr", "diff", str(number), "--repo", f"{owner}/{repo}"],
             capture_output=True, text=True, check=False,
+            timeout=GH_TIMEOUT_SECONDS,
         )
-    except (OSError, FileNotFoundError):
+    except (OSError, FileNotFoundError, subprocess.TimeoutExpired):
         emit({"status": "fetch_failed", "pr": number, "detail": "diff fetch failed"})
     if diff_proc.returncode != 0:
         emit({
@@ -482,13 +535,16 @@ def main(argv) -> None:
         filtered_diff = clipped[:nl] if nl > 0 else clipped
 
     # Threads: degradable. Failure here proceeds on diff + commits.
-    threads_ok, threads, threads_truncated = fetch_threads(owner, repo, number)
+    threads_ok, threads, threads_truncated, thread_comments_truncated = (
+        fetch_threads(owner, repo, number)
+    )
 
     flags = {
         "excluded_paths": excluded_paths,
         "truncations": {
             "diff": diff_truncated,
             "threads": threads_truncated,
+            "thread_comments": thread_comments_truncated,
         },
     }
     degraded_inputs: list[str] = []
@@ -504,7 +560,7 @@ def main(argv) -> None:
         "status": "ok",
         "pr": number,
         "repo": f"{owner}/{repo}",
-        "title": title,
+        "title_raw": title,
         "diff_raw": filtered_diff,
         "commits_raw": commits,
         "threads_raw": threads,

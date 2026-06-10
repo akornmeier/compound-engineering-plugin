@@ -140,6 +140,8 @@ interface RunOpts {
   env?: Record<string, string>
   /** When true, run with a PATH that lacks the gh shim entirely. */
   noGh?: boolean
+  /** Override the working dir so a test controls origin resolution. */
+  cwd?: string
 }
 
 async function run(opts: RunOpts = {}): Promise<{
@@ -151,7 +153,7 @@ async function run(opts: RunOpts = {}): Promise<{
   const ref = opts.ref ?? "42"
   const binDir = opts.noGh ? noGhDir : realDir
   const proc = Bun.spawn(["python3", SCRIPT, ref], {
-    cwd: process.cwd(),
+    cwd: opts.cwd ?? process.cwd(),
     env: {
       // A minimal PATH so the script resolves only our shim (or no gh at all).
       PATH: binDir,
@@ -251,6 +253,36 @@ describe("fetch-pr-data: degradation and caps", () => {
     expect(envelope.flags.excluded_paths).toContain("assets/app.min.js")
   })
 
+  test("generated-dir exclusion matches path segments, not substrings", async () => {
+    // src/redist and prebuild contain "dist"/"build" as substrings but are not
+    // generated dirs; only a real dist/build *segment* should be excluded.
+    const mkBlock = (p: string) =>
+      `diff --git a/${p} b/${p}\n--- a/${p}\n+++ b/${p}\n@@ -1,1 +1,1 @@\n+x\n`
+    const diff =
+      mkBlock("src/redist/file.js") +
+      mkBlock("prebuild/file.js") +
+      mkBlock("dist/file.js") +
+      mkBlock("pkg/dist/file.js")
+    const segDiff = path.join(os.tmpdir(), `ls-segdiff-${Date.now()}.diff`)
+    fs.writeFileSync(segDiff, diff)
+    try {
+      const { envelope } = await run({ env: { GH_SHIM_DIFF_FILE: segDiff } })
+      expect(envelope.status).toBe("ok")
+      // Kept: "dist"/"build" only appear as substrings of a path segment.
+      expect(envelope.diff_raw).toContain("src/redist/file.js")
+      expect(envelope.diff_raw).toContain("prebuild/file.js")
+      expect(envelope.flags.excluded_paths).not.toContain("src/redist/file.js")
+      expect(envelope.flags.excluded_paths).not.toContain("prebuild/file.js")
+      // Excluded: a real dist segment at any depth.
+      expect(envelope.diff_raw).not.toContain("a/dist/file.js")
+      expect(envelope.diff_raw).not.toContain("pkg/dist/file.js")
+      expect(envelope.flags.excluded_paths).toContain("dist/file.js")
+      expect(envelope.flags.excluded_paths).toContain("pkg/dist/file.js")
+    } finally {
+      fs.rmSync(segDiff, { force: true })
+    }
+  })
+
   test("oversized diff -> truncated with diff truncation flag set", async () => {
     // Build a diff well over MAX_DIFF_BYTES (200_000) for one kept file.
     const big = path.join(os.tmpdir(), `ls-bigdiff-${Date.now()}.diff`)
@@ -304,6 +336,53 @@ describe("fetch-pr-data: degradation and caps", () => {
       fs.rmSync(bigThreads, { force: true })
     }
   })
+
+  test("thread with comments totalCount over the cap -> thread_comments flag set", async () => {
+    // comments(first: 20) silently drops the rest; totalCount discloses it.
+    const page = [
+      {
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: [
+                  {
+                    id: "T_DEEP",
+                    isResolved: false,
+                    isOutdated: false,
+                    path: "src/x.ts",
+                    line: 1,
+                    comments: {
+                      totalCount: 25,
+                      nodes: [{ author: { login: "r" }, body: "c0", url: "u0" }],
+                    },
+                  },
+                ],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          },
+        },
+      },
+    ]
+    const deepThreads = path.join(os.tmpdir(), `ls-deepthreads-${Date.now()}.json`)
+    fs.writeFileSync(deepThreads, JSON.stringify(page))
+    try {
+      const { envelope } = await run({
+        env: { GH_SHIM_THREADS_FILE: deepThreads },
+      })
+      expect(envelope.status).toBe("ok")
+      expect(envelope.flags.truncations.thread_comments).toBe(true)
+    } finally {
+      fs.rmSync(deepThreads, { force: true })
+    }
+  })
+
+  test("threads within the per-thread comment cap -> thread_comments flag false", async () => {
+    const { envelope } = await run()
+    expect(envelope.status).toBe("ok")
+    expect(envelope.flags.truncations.thread_comments).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -353,6 +432,43 @@ describe("fetch-pr-data: named non-ok states", () => {
     expect(envelope.detail).toContain("other-owner/other-repo")
   })
 
+  test("explicit-repo ref with an unresolvable origin -> no_forge", async () => {
+    // A git repo with no origin remote: the ref names a repo but there is no
+    // origin to validate against, so this is no_forge, not repo_mismatch.
+    const noOrigin = fs.mkdtempSync(path.join(os.tmpdir(), "ls-no-origin-"))
+    await Bun.spawn(["git", "init", "-q", noOrigin]).exited
+    try {
+      const { envelope } = await run({
+        ref: "some-owner/some-repo#42",
+        cwd: noOrigin,
+      })
+      expect(envelope.status).toBe("no_forge")
+      expect(envelope.detail).toContain("origin")
+    } finally {
+      fs.rmSync(noOrigin, { recursive: true, force: true })
+    }
+  })
+
+  test("URL ref whose host differs from origin -> repo_mismatch", async () => {
+    // owner/repo match origin but the forge host does not; the slug alone is
+    // ambiguous across forges, so a host mismatch must be rejected.
+    const slug = (
+      await new Response(
+        Bun.spawn(["git", "remote", "get-url", "origin"], {
+          stdout: "pipe",
+        }).stdout,
+      ).text()
+    )
+      .trim()
+      .replace(/^(git@[^:]+:|ssh:\/\/git@[^/]+\/|https?:\/\/[^/]+\/)/, "")
+      .replace(/\.git$/, "")
+    const { envelope } = await run({
+      ref: `https://evil.example/${slug}/pull/42`,
+    })
+    expect(envelope.status).toBe("repo_mismatch")
+    expect(envelope.detail).toContain("evil.example")
+  })
+
   test("diff fetch fails on a valid merged PR -> fetch_failed", async () => {
     const { envelope } = await run({ env: { GH_SHIM_DIFF_FAIL: "1" } })
     expect(envelope.status).toBe("fetch_failed")
@@ -388,7 +504,7 @@ describe("fetch-pr-data: reference forms", () => {
       ).text()
     )
       .trim()
-      .replace(/^git@[^:]+:/, "")
+      .replace(/^(git@[^:]+:|ssh:\/\/git@[^/]+\/|https?:\/\/[^/]+\/)/, "")
       .replace(/\.git$/, "")
     const { envelope } = await run({
       ref: `https://github.com/${slug}/pull/42`,

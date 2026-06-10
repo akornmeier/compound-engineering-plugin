@@ -2,7 +2,7 @@
 name: ce-learning-sweep
 description: "Sweep one merged PR -- its diff, commit messages, and review threads -- for candidate learnings, then report keepers with a confidence anchor, a three-way corpus verdict, and self-contained capture fuel for hand-routing through /ce-compound. Report-only: writes nothing to the repo. Use to check whether a merged PR carried durable learnings that have not been documented yet, before or instead of capturing them one at a time."
 argument-hint: "[PR number, #N, URL, or owner/repo#N]"
-allowed-tools: Bash(gh *), Bash(python3 *fetch-pr-data.py), Bash(python3 *scan-corpus.py), Read, Grep
+allowed-tools: Bash(python3 *fetch-pr-data.py), Bash(python3 *scan-corpus.py), Read, Grep, AskUserQuestion, ToolSearch, Skill
 ---
 
 # Merged-PR Learning Sweep
@@ -48,7 +48,7 @@ The script emits one JSON envelope and exits 0 for every recognized state. Branc
 Mining already happened inside the `ok` envelope. Surface the `flags` block into the report's disclosure section (`references/report-template.md` header):
 
 - `flags.degraded_inputs` (e.g. `["review_threads"]`) — the sweep ran without these inputs. The key is present only when something degraded; an absent key means clean inputs. A PR with zero threads is **not** degradation (empty thread list, no flag); only an inaccessible-threads fetch sets this.
-- `flags.truncations` — `diff` and/or `threads` were capped; the report states which.
+- `flags.truncations` — `diff`, `threads`, and/or `thread_comments` were capped (`thread_comments` is true when any single thread's comments exceeded the per-thread cap); the report states which.
 - `flags.excluded_paths` — lockfiles/generated files dropped from the mined diff; disclose the count and that exclusions occurred.
 
 These disclosures travel into every report so a reader knows what the sweep did and did not see.
@@ -66,13 +66,13 @@ For each candidate, record evidence pointers in the fixed per-source format (`re
 
 ## Phase 4: Corpus verdicts
 
-Build the corpus index:
+Build the corpus index. Resolve the corpus directory from the repo root, not CWD — running the sweep from a subdirectory would otherwise resolve `docs/solutions` relative to CWD, yield an empty index, and silently flip every verdict to `new`:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR:-.}/scripts/scan-corpus.py"
+python3 "${CLAUDE_SKILL_DIR:-.}/scripts/scan-corpus.py" "$(git rev-parse --show-toplevel)/docs/solutions"
 ```
 
-The script emits `{ "index": [...], "warnings": [...] }`. Each index entry carries `path`, `title`, `module`, `tags`, `problem_type`, and `date`. **An empty index (missing or empty `docs/solutions/`) means every candidate verdicts `new`** — the run completes cleanly. Note any `warnings` (malformed-frontmatter skips) so a skipped doc is not silently treated as absent.
+The script emits `{ "corpus_dir": ..., "corpus_dir_found": ..., "index": [...], "warnings": [...] }`. Each index entry carries `path`, `title`, `module`, `tags`, `problem_type`, and `date`. **An empty index (empty `docs/solutions/`) means every candidate verdicts `new`** — the run completes cleanly. When `corpus_dir_found` is `false`, the corpus directory does not exist at the resolved path: disclose that in the report header (the not-found Corpus variant in `references/report-template.md`) rather than treating it as a silently empty corpus. Note any `warnings` (malformed-frontmatter skips) so a skipped doc is not silently treated as absent.
 
 For each deduped candidate, score corpus overlap and assign a verdict per `references/verdict-rubric.md`. The procedure:
 

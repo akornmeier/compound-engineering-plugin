@@ -10,12 +10,12 @@ Run: <run-id>
 
 Inputs:
 - Degraded: <none | review_threads inaccessible — swept on diff + commits>
-- Truncations: <none | diff capped | threads capped | diff + threads capped>
+- Truncations: <none | diff capped | threads capped | thread comments capped | combinations>
 - Exclusions: <none | N lockfile/generated paths dropped from the diff>
-- Corpus: <N docs indexed | empty corpus — every candidate verdicts new> [| M doc(s) skipped: malformed frontmatter]
+- Corpus: <N docs indexed | empty corpus — every candidate verdicts new | corpus directory not found at <path> — every candidate verdicts new> [| M doc(s) skipped: malformed frontmatter]
 ```
 
-Populate `Degraded` from `flags.degraded_inputs`, `Truncations` from `flags.truncations`, `Exclusions` from the length of `flags.excluded_paths`, and `Corpus` from the scan-corpus index length and `warnings`.
+Populate `Degraded` from `flags.degraded_inputs`, `Truncations` from `flags.truncations`, `Exclusions` from the length of `flags.excluded_paths`, and `Corpus` from the scan-corpus index length and `warnings`. When scan-corpus reports `corpus_dir_found: false`, use the not-found variant and quote the scanned `corpus_dir` path rather than the empty-corpus variant.
 
 ## Keeper entries (anchor >= 75)
 

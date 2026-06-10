@@ -30,13 +30,19 @@ function entryByPath(index: any[], rel: string): any {
 // frontmatter), all mirrored from real entries.
 // ---------------------------------------------------------------------------
 describe("scan-corpus populated fixture", () => {
+  const POPULATED = path.join(FIXTURES, "populated")
+
   async function scanPopulated() {
-    const { stdout, exitCode } = await runScan(
-      path.join(FIXTURES, "populated")
-    )
+    const { stdout, exitCode } = await runScan(POPULATED)
     expect(exitCode).toBe(0)
     return JSON.parse(stdout)
   }
+
+  test("happy: populated dir reports found=true and an absolute corpus_dir", async () => {
+    const { corpus_dir, corpus_dir_found } = await scanPopulated()
+    expect(corpus_dir_found).toBe(true)
+    expect(corpus_dir).toBe(path.resolve(POPULATED))
+  })
 
   test("happy: well-formed entry indexed with all fields", async () => {
     const { index, warnings } = await scanPopulated()
@@ -105,25 +111,35 @@ describe("scan-corpus populated fixture", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Empty and absent directories: both yield an empty index, exit 0.
+// Empty and absent directories: both yield an empty index, exit 0. The
+// corpus_dir / corpus_dir_found keys distinguish a present-but-empty corpus
+// from an absent one so the caller doesn't silently verdict every candidate
+// `new` when the sweep ran from a subdirectory and the path missed.
 // ---------------------------------------------------------------------------
 describe("scan-corpus empty and absent", () => {
-  test("edge: empty corpus directory -> empty index, exit 0", async () => {
-    const { stdout, exitCode } = await runScan(path.join(FIXTURES, "empty"))
+  test("edge: empty corpus directory -> empty index, found=true, exit 0", async () => {
+    const emptyDir = path.join(FIXTURES, "empty")
+    const { stdout, exitCode } = await runScan(emptyDir)
     expect(exitCode).toBe(0)
-    const { index, warnings } = JSON.parse(stdout)
+    const { index, warnings, corpus_dir, corpus_dir_found } = JSON.parse(stdout)
     expect(index).toEqual([])
     expect(warnings).toEqual([])
+    // An existing-but-empty directory: found is true, path is absolute.
+    expect(corpus_dir_found).toBe(true)
+    expect(corpus_dir).toBe(path.resolve(emptyDir))
   })
 
-  test("edge: directory absent entirely -> empty index, exit 0", async () => {
-    const { stdout, exitCode } = await runScan(
-      path.join(FIXTURES, "does-not-exist-xyz")
-    )
+  test("edge: directory absent entirely -> empty index, found=false, exit 0", async () => {
+    const absentDir = path.join(FIXTURES, "does-not-exist-xyz")
+    const { stdout, exitCode } = await runScan(absentDir)
     expect(exitCode).toBe(0)
-    const { index, warnings } = JSON.parse(stdout)
+    const { index, warnings, corpus_dir, corpus_dir_found } = JSON.parse(stdout)
     expect(index).toEqual([])
     expect(warnings).toEqual([])
+    // A missing directory: found is false; the resolved absolute path is still
+    // reported so the caller can quote it in the not-found disclosure.
+    expect(corpus_dir_found).toBe(false)
+    expect(corpus_dir).toBe(path.resolve(absentDir))
   })
 })
 

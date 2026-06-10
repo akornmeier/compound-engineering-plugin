@@ -6,9 +6,18 @@ Usage:
 
 Output (stdout): a single JSON object
     {
+      "corpus_dir": "<resolved absolute path of the scanned directory>",
+      "corpus_dir_found": <bool — whether that directory existed>,
       "index": [ {path, title, module, tags, problem_type, problem_type_key, date}, ... ],
       "warnings": [ {path, reason}, ... ]
     }
+
+``corpus_dir`` and ``corpus_dir_found`` let the caller detect the silent-empty
+case: running the sweep from a subdirectory resolves ``docs/solutions`` relative
+to CWD, so a missing directory would otherwise look like an empty corpus and
+flip every verdict to ``new``. The caller passes a repo-root-anchored path and
+discloses ``corpus_dir_found: false`` in the report rather than treating it as
+an empty corpus.
 
 Exit codes:
     0 — scan completed (including the empty/missing-directory and
@@ -237,8 +246,15 @@ def scan(corpus_dir):
 
 def main(argv):
     corpus_dir = argv[1] if len(argv) > 1 else "docs/solutions"
+    corpus_abspath = os.path.abspath(corpus_dir)
+    corpus_found = os.path.isdir(corpus_dir)
     index, warnings = scan(corpus_dir)
-    json.dump({"index": index, "warnings": warnings}, sys.stdout, indent=2)
+    json.dump({
+        "corpus_dir": corpus_abspath,
+        "corpus_dir_found": corpus_found,
+        "index": index,
+        "warnings": warnings,
+    }, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0
 
