@@ -85,16 +85,12 @@ describe("the report vocabulary the trials will record is fixed in the template"
 })
 
 // ===========================================================================
-// FIVE-PR VALIDATION EXPERIMENT — acceptance gate: PENDING
+// FIVE-PR VALIDATION EXPERIMENT — acceptance gate: RECORDED
 // ===========================================================================
 //
-// STATUS: PENDING — no experiment run has executed yet. U6 replaces this block
-// with recorded trial results and an explicit adjudication
-// (pass / fail / falsified). Pending semantics: this block records the bar; it
-// must never fail CI.
-//
-// EXPERIMENT: sweep the five most recent merged PRs of this repo with
-// /ce-learning-sweep (one PR per run), including PR #13 and PR #14.
+// STATUS: RECORDED — five trials executed 2026-06-10, adjudicated by the user
+// the same day. The bar below was committed before the first run (commit
+// 5f9a236) and was not adjusted mid-experiment.
 //
 // THE BAR (verbatim from the origin doc, asserted above):
 //   - Yield: at least 2 keep-worthy, never-captured candidates across the
@@ -104,31 +100,72 @@ describe("the report vocabulary the trials will record is fixed in the template"
 //   - Corpus accuracy: already-documented ground is correctly marked as such,
 //     never re-proposed as new.
 //
-// PROTOCOL CONDITIONS for a run to count:
-//   - Forge access required: all five runs execute with review threads
-//     available. A degraded run (threads inaccessible) does not count toward
-//     the experiment.
-//   - Known-answer probe: PR #13 must surface the fixture-telemetry
-//     disposition decision as a keeper (ground truth: verified absent from
-//     docs/solutions/ as of 2026-06-09; expected verdict: new).
-//   - Negative control: PR #14 (comment-only trial record) — zero yield is
-//     the correct output, not a result that counts against the bet.
-//   - Report-only contract: each run writes nothing to the repo (clean
-//     `git status` after every run).
+// EXECUTION: each trial ran the skill from source via subagent injection
+// (plugin skill content caches at session start, per AGENTS.md), one fresh
+// agent per PR, live gh against this repo. Corpus at 31 docs for all runs.
 //
-// FALSIFICATION CLAUSE: zero keep-worthy yield across all five PRs falsifies
-// the capture-bottleneck claim for this corpus and deprioritizes full B0 —
-// the experiment is designed to be able to fail.
+// RECORDED TRIALS (PR | run_id | terminal line | keepers / near-misses / discards):
 //
-// RECORDING FORMAT (what U6 writes in place of this PENDING block), per PR:
-//   - PR number, terminal status line as emitted
-//   - candidates with anchors and verdicts (keepers, near-misses, discard count)
-//   - user keep/reject judgment per keeper, against the bar
-//   - any sweep-vs-ce-compound verdict disagreement observed when a keeper is
-//     hand-routed through /ce-compound (recorded as a precision data point)
-//   - clean-git-status check result
-// Then: the adjudication — pass / fail / falsified — with the per-criterion
-// readings. The bar is NOT adjusted mid-experiment; threshold tuning happens
-// only after adjudication (safe-auto-rubric-calibration.md).
+//   | PR  | run_id                    | terminal status line                              | K | M | D |
+//   |-----|---------------------------|---------------------------------------------------|---|---|---|
+//   | #14 | 20260610-075926-ba870b05  | status: swept — 1 keeper(s), 1 near-miss(es), 3 discarded | 1 | 1 | 3 |
+//   | #13 | 20260610-075928-ba2bc67e  | status: swept — 5 keeper(s), 4 near-miss(es), 3 discarded | 5 | 4 | 3 |
+//   | #12 | 20260610-075937-9aed3d2b  | status: swept — 3 keeper(s), 2 near-miss(es), 1 discarded | 3 | 2 | 1 |
+//   | #11 | 20260610-075938-b42211b9  | status: swept — 2 keeper(s), 2 near-miss(es), 1 discarded | 2 | 2 | 1 |
+//   | #10 | 20260610-075943-0ab682be  | status: swept — 2 keeper(s), 4 near-miss(es), 3 discarded | 2 | 4 | 3 |
+//
+//   Totals: 13 keepers (7 new, 2 overlaps-existing, 4 already-documented),
+//   13 near-misses, 11 counted discards. Anchors: 10 keepers at 100, 3 at 75.
+//   Keepers by PR:
+//     #14: synthetic-fixture-artifacts-out-of-telemetry-dirs (100/new)
+//     #13: deterministic-projection-LLM-copies-verbatim (100/overlaps-existing);
+//          sort-model-output-by-stable-key (100/new); telemetry-outside-
+//          docs-solutions (100/new); workflow-runtime-cannot-mint-dates
+//          (100/overlaps-existing); bias-aware-telemetry-write-gates (75/new)
+//     #12: live-boundary contracts 4/5/N>=3-range — all three correctly
+//          verdicted already-documented against the very doc the PR edited
+//          (5/5 dimensions cited), no routing blocks, none re-proposed as new
+//     #11: plan-Files-block-path-shape-filter (100/new);
+//          extensionless-file-allowlist-for-path-heuristics (100/new)
+//     #10: live-boundary-contract-cluster (100/already-documented);
+//          single-source-deterministic-core-with-build-time-inlining (75/new)
+//
+// PROTOCOL CONDITIONS — all held on every trial:
+//   - Forge access: all five envelopes returned status ok with NO
+//     degraded_inputs flag (review threads fetched live). Every run counted.
+//   - Report-only: `git status` clean after every run; the only filesystem
+//     footprint was /tmp scratch.
+//   - Sweep-vs-ce-compound disagreements: none observed — no keeper was
+//     routed through /ce-compound during the experiment window (hand-routing
+//     is post-experiment follow-up; disagreements there are future data).
+//
+// KNOWN-ANSWER PROBE & NEGATIVE CONTROL — adjudicated together (user,
+// 2026-06-10): the ground-truth "fixture-telemetry disposition decision" was
+// expected on PR #13 with PR #14 as a zero-yield negative control. The
+// decision's evidence text actually lives in #14's diff (the recorded
+// trial-record comment block, commit 379d133), and the sweep surfaced it
+// there verbatim as an anchor-100 keeper verdicted new. Adjudication: HIT —
+// the origin doc mis-attributed the location; the negative control was
+// compromised by design (it was never a zero-signal PR), recorded as a
+// control-design finding, not a sweep failure. PR #13 independently yielded
+// five defensible keepers.
+//
+// ADJUDICATION (user, 2026-06-10): **PASS**.
+//   - Yield: PASS — 9 never-captured keepers (7 new + 2 overlaps-existing);
+//     user confirmed >= 2 keep-worthy.
+//   - Precision: PASS under the discards-only reading (11 discards / 13
+//     keepers ~= 0.85 per keeper, within the ~1 bar). The near-miss tier
+//     (13 one-liners) is deliberate tuning data, not triage burden; recorded
+//     here so a future threshold retune can revisit the reading.
+//   - Corpus accuracy: PASS — 4 already-documented keepers correctly cited
+//     their covering doc with 5/5 matched dimensions; zero already-documented
+//     ground re-proposed as new (PR #12 was the hardest case: a capture PR
+//     swept against the very doc it created).
+//   - Falsification clause: NOT triggered.
+//
+// Threshold tuning, if any, happens now that adjudication is recorded
+// (safe-auto-rubric-calibration.md) — candidate: whether near-misses belong
+// in the precision denominator, and whether keeper volume on large feature
+// PRs (5 on #13) warrants a per-PR keeper cap. Neither changes this result.
 //
 // ===========================================================================
