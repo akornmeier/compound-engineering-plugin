@@ -47,7 +47,7 @@ The script emits one JSON envelope and exits 0 for every recognized state. Branc
 
 Mining already happened inside the `ok` envelope. Surface the `flags` block into the report's disclosure section (`references/report-template.md` header):
 
-- `flags.degraded_inputs` (e.g. `["review_threads"]`) — the sweep ran without these inputs. A PR with zero threads is **not** degradation (empty list, no flag); only an inaccessible-threads fetch sets this.
+- `flags.degraded_inputs` (e.g. `["review_threads"]`) — the sweep ran without these inputs. The key is present only when something degraded; an absent key means clean inputs. A PR with zero threads is **not** degradation (empty thread list, no flag); only an inaccessible-threads fetch sets this.
 - `flags.truncations` — `diff` and/or `threads` were capped; the report states which.
 - `flags.excluded_paths` — lockfiles/generated files dropped from the mined diff; disclose the count and that exclusions occurred.
 
