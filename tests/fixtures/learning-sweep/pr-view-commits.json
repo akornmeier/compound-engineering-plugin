@@ -1,0 +1,1 @@
+{"commits":[{"oid":"aaaa111122223333444455556666777788889999","messageHeadline":"feat(widget): add retry backoff","messageBody":"Retries now use exponential backoff capped at 30s."},{"oid":"bbbb111122223333444455556666777788889999","messageHeadline":"test(widget): cover backoff ceiling","messageBody":""}]}

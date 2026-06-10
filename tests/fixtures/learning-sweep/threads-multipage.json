@@ -1,0 +1,60 @@
+[
+  {
+    "data": {
+      "repository": {
+        "pullRequest": {
+          "reviewThreads": {
+            "nodes": [
+              {
+                "id": "THREAD_PAGE1_RESOLVED",
+                "isResolved": true,
+                "isOutdated": false,
+                "path": "src/widget.ts",
+                "line": 4,
+                "comments": {
+                  "nodes": [
+                    {
+                      "author": { "login": "reviewer-a" },
+                      "body": "Cap the backoff so a stuck dependency cannot block for minutes.",
+                      "url": "https://github.com/o/r/pull/42#discussion_r1"
+                    }
+                  ]
+                }
+              }
+            ],
+            "pageInfo": { "hasNextPage": true, "endCursor": "CURSOR_1" }
+          }
+        }
+      }
+    }
+  },
+  {
+    "data": {
+      "repository": {
+        "pullRequest": {
+          "reviewThreads": {
+            "nodes": [
+              {
+                "id": "THREAD_PAGE2_UNRESOLVED",
+                "isResolved": false,
+                "isOutdated": false,
+                "path": "src/widget.ts",
+                "line": 6,
+                "comments": {
+                  "nodes": [
+                    {
+                      "author": { "login": "reviewer-b" },
+                      "body": "Consider jitter to avoid thundering-herd retries.",
+                      "url": "https://github.com/o/r/pull/42#discussion_r2"
+                    }
+                  ]
+                }
+              }
+            ],
+            "pageInfo": { "hasNextPage": false, "endCursor": null }
+          }
+        }
+      }
+    }
+  }
+]
