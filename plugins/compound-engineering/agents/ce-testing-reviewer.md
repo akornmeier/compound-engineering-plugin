@@ -1,7 +1,7 @@
 ---
 name: ce-testing-reviewer
 description: Always-on code-review persona. Reviews code for test coverage gaps, weak assertions, brittle implementation-coupled tests, and missing edge case coverage.
-model: inherit
+model: sonnet
 tools: Read, Grep, Glob, Bash, Write
 color: blue
 

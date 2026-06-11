@@ -1,7 +1,7 @@
 ---
 name: ce-code-simplicity-reviewer
 description: "Final review pass to ensure code is as simple and minimal as possible. Use after implementation is complete to identify YAGNI violations and simplification opportunities."
-model: inherit
+model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
 

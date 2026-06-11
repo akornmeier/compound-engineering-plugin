@@ -1,7 +1,7 @@
 ---
 name: ce-spec-flow-analyzer
 description: "Analyzes specifications and feature descriptions for user flow completeness and gap identification. Use when a spec, plan, or feature description needs flow analysis, edge case discovery, or requirements validation."
-model: inherit
+model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
 
