@@ -95,7 +95,7 @@ Important: Just because the developer's installed plugin may be out of date, it'
 Every agent declares an explicit `model:` in its frontmatter — never omit it. Three tiers:
 
 - **`inherit`** — reserved for agents whose findings justify session-tier capability, where a missed finding has direct cost: exploit-level security analysis and adversarial review (`ce-correctness-reviewer`, `ce-security-reviewer`, `ce-adversarial-reviewer`, `ce-adversarial-document-reviewer`, `ce-security-sentinel`). On an Opus/Fable session these deliberately run at the session's model.
-- **`sonnet`** — the default for persona reviewers, researchers, and design/workflow agents: judgment within a well-specified rubric. This mirrors ce-code-review's dispatch-time tiering ("mid-tier model for reviewers"), whose docs warn that running reviewers on the session model "silently 3-4x's the cost of a review" on Opus sessions.
+- **`sonnet`** — the default for persona reviewers, researchers, and design/workflow agents: judgment within a well-specified rubric. This mirrors ce-code-review's dispatch-time tiering ("mid-tier model for reviewers"), whose docs warn that running reviewers on the session model "silently multiplies the cost of a review by 3-4x" on Opus sessions.
 - **`haiku`** — mechanical, checklist- or template-driven work (e.g., `ce-coherence-reviewer`).
 
 Dispatch-time `model` parameters override frontmatter (precedence: `CLAUDE_CODE_SUBAGENT_MODEL` env var > dispatch param > frontmatter > session model), so skills that tier at dispatch keep working unchanged — the frontmatter is the default that protects unparameterized dispatches from silently inheriting an expensive session model. A new agent using `inherit` needs a stated reason in its PR.
