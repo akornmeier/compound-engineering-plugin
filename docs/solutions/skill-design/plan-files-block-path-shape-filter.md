@@ -35,7 +35,7 @@ This was surfaced by dogfooding `ce-verify-work` on the real probe plan in PR #1
 Any function that extracts declared files from a plan's Files block must apply a **path-shape filter** before treating a backtick span as a declared file. A span is a plausible path only when it satisfies all three conditions:
 
 1. No whitespace — real paths do not contain spaces in this codebase's conventions
-2. No glob or placeholder characters — reject spans containing `*`, `?`, `<`, or `>`
+2. No glob or placeholder characters — reject spans containing `*`, `<`, or `>`
 3. Path-shaped — must contain a directory separator (`/`), a trailing extension (`.ext`), or be a known extensionless filename (e.g., `Makefile`, `Dockerfile`, `AGENTS.md`, `CLAUDE.md`)
 
 Spans that fail any condition are silently skipped; they are never counted as declared or missing.

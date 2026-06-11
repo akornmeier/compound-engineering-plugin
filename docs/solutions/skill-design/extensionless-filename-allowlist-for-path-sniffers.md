@@ -35,7 +35,7 @@ Any path-sniffing function must pair its shape rule with a **case-insensitive al
 Three-rule implementation shape:
 
 1. **Whitespace**: reject immediately — real paths in this codebase contain no spaces
-2. **Glob/placeholder characters**: reject tokens containing `*`, `?`, `<`, `>` — these are globs, templates, or placeholders
+2. **Glob/placeholder characters**: reject tokens containing `*`, `<`, `>` — these are globs or angle-bracket placeholders
 3. **Path-shaped**: accept when the token contains `/` OR matches `/\.[A-Za-z0-9]+$/` (trailing extension) OR matches the case-insensitive extensionless allowlist
 
 The allowlist should cover the common set. The one in `workflows/drift-rollup.js` is the reference implementation:
