@@ -11,7 +11,7 @@ After installing, run `/ce-setup` in any project. It diagnoses your environment,
 | Component | Count |
 |-----------|-------|
 | Agents | 50+ |
-| Skills | 39+ |
+| Skills | 40+ |
 
 ## Skills
 
@@ -33,6 +33,7 @@ The primary entry points for engineering work, invoked as slash commands. Detail
 | [`/ce-debug`](../../docs/skills/ce-debug.md) | Systematically find root causes and fix bugs -- traces causal chains, forms testable hypotheses, and implements test-first fixes |
 | [`/ce-compound`](../../docs/skills/ce-compound.md) | Document solved problems to compound team knowledge |
 | [`/ce-compound-refresh`](../../docs/skills/ce-compound-refresh.md) | Refresh stale or drifting learnings and decide whether to keep, update, replace, or archive them |
+| `/ce-learning-sweep` | Sweep one merged PR — diff, commits, review threads — for candidate learnings; report keepers with confidence anchors, three-way corpus verdicts, and capture fuel for hand-routing through `/ce-compound`. Report-only: writes nothing |
 | [`/ce-optimize`](../../docs/skills/ce-optimize.md) | Run iterative optimization loops with parallel experiments, measurement gates, and LLM-as-judge quality scoring |
 | [`/ce-product-pulse`](../../docs/skills/ce-product-pulse.md) | Generate a single-page, time-windowed report on usage, performance, errors, and followups. Saves reports to `docs/pulse-reports/` as a browseable timeline of what users experienced |
 

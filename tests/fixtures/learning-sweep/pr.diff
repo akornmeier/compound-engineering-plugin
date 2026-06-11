@@ -1,0 +1,33 @@
+diff --git a/src/widget.ts b/src/widget.ts
+index 1111111..2222222 100644
+--- a/src/widget.ts
++++ b/src/widget.ts
+@@ -1,3 +1,7 @@
+ export function retry(fn) {
+-  return fn()
++  let delay = 100
++  for (let i = 0; i < 5; i++) {
++    try { return fn() } catch (e) { sleep(Math.min(delay, 30000)); delay *= 2 }
++  }
+ }
+diff --git a/bun.lock b/bun.lock
+index 3333333..4444444 100644
+--- a/bun.lock
++++ b/bun.lock
+@@ -1,2 +1,2 @@
+-"version": "1"
++"version": "2"
+diff --git a/dist/bundle.js b/dist/bundle.js
+index 5555555..6666666 100644
+--- a/dist/bundle.js
++++ b/dist/bundle.js
+@@ -1 +1 @@
+-var a=1
++var a=2
+diff --git a/assets/app.min.js b/assets/app.min.js
+index 7777777..8888888 100644
+--- a/assets/app.min.js
++++ b/assets/app.min.js
+@@ -1 +1 @@
+-!function(){}()
++!function(){return 1}()

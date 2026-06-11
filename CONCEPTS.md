@@ -46,13 +46,19 @@ A documented solution to a past problem — a bug fix, a convention, or a workfl
 ### Pattern doc
 Guidance generalized from several Learnings into a broader rule. Higher-leverage than any single incident-level Learning, and higher-risk when stale, because future work treats it as broadly applicable.
 
+### Learning sweep
+A report-only, generate-and-filter pass over one merged PR — its diff, commit messages, and review threads — that proposes candidate Learnings without writing any. Candidates are deduped within the batch, checked against the existing store, gated by **Confidence anchor**, and reported with a **Corpus verdict**; keepers are routed through the normal capture path by hand, so `ce-compound` remains the only writer.
+
+### Corpus verdict
+The three-way classification a **Learning sweep** assigns each candidate against the existing store: new (nothing covers it), already-documented (fully covered — marked as such, never re-proposed), or overlaps-existing (partially covered — names the overlapping doc and flags it as an extend candidate). Never collapsed to two values; the middle state is what distinguishes "extend an existing Learning" from both "write a new one" and "do nothing."
+
 ## Review and workflow vocabulary
 
 ### Reviewer persona
 A single-lens reviewer Agent that evaluates work from one specific perspective — security, correctness, scope, design, and so on. Review Skills dispatch a panel of personas and merge their findings.
 
 ### Confidence anchor
-A discrete, self-scored confidence value on a fixed small scale, each level tied to a behavioral criterion the model can honestly apply, used to gate and rank review findings instead of a continuous score that invites false precision. Each review Skill sets its own actionable threshold; corroboration across personas promotes a finding by one level.
+A discrete, self-scored confidence value on a fixed small scale, each level tied to a behavioral criterion the model can honestly apply, used to gate and rank findings — review findings, or candidate Learnings in a Learning sweep — instead of a continuous score that invites false precision. Each review Skill sets its own actionable threshold; corroboration across personas promotes a finding by one level.
 
 ### Autofix class
 The classification of a review finding by how safely its proposed fix can be applied: applied silently, applied only after user confirmation, left for a human to resolve, or recorded as advisory with no action.
