@@ -77,5 +77,8 @@ A Claude-Code-only background orchestration script a Skill hands to the Workflow
 ### Live boundary
 The line between what static tests can verify about a Dynamic workflow and what only the real runtime enforces. The contracts on its far side — how arguments arrive, how a file's contents reach a runtime that cannot read files, which agent identifiers and output schemas the runtime accepts, whether dispatch failures surface — pass every static test yet can fail the first live run, so a mandatory live smoke run is the only gate that proves them.
 
+### Prose fallback
+The non-workflow execution path a Skill runs when the Workflow tool is unavailable — on non-Claude Targets (Codex, Gemini, etc.) or in contexts where the Workflow tool has not been invoked. A Skill that uses a Dynamic workflow must keep a prose fallback behind an availability guard so it remains functional after conversion. When the fallback must produce the same numeric or categorical output as the workflow path, the fallback cites the canonical module's rules verbatim rather than improvising.
+
 ### Drift event
 A durable, per-run record of one `ce-verify-work` reading — the cited drifted and attempted Implementation-Unit lists for a single plan, committed under `docs/drift-events/`. The capture half of the rework/churn loop: each qualifying probe run persists what it found, so the **Drift rate** can be derived at read time by aggregating across many events, never stored as a number. Produced by the `ce-verify-work` probe, which classifies via a **Dynamic workflow** on Claude Code. Distinct from a **Learning** — a drift event is machine telemetry, not human institutional knowledge, and deliberately lives outside `docs/solutions/`.
