@@ -1,7 +1,7 @@
 ---
 name: ce-maintainability-reviewer
 description: Always-on code-review persona. Reviews code for structural quality, complexity deletion, coupling, naming, dead code, type-boundary leaks, and abstraction debt.
-model: inherit
+model: sonnet
 tools: Read, Grep, Glob, Bash, Write
 color: blue
 

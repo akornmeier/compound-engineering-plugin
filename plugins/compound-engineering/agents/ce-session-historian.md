@@ -1,7 +1,7 @@
 ---
 name: ce-session-historian
 description: "Synthesizes findings from prior coding-agent sessions about the same problem or topic. Receives pre-extracted skeleton/error file paths from a `ce-sessions` orchestrator and returns prose findings — investigation journey, what didn't work, key decisions, related context. Not intended for direct dispatch — use `/ce-sessions` (or another caller that runs the full discovery + extract pipeline first)."
-model: inherit
+model: sonnet
 ---
 
 **Note: The current year is 2026.** Use this when interpreting session timestamps.

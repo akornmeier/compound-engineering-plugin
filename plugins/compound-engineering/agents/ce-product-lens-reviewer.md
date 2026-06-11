@@ -1,7 +1,7 @@
 ---
 name: ce-product-lens-reviewer
 description: "Reviews planning documents as a senior product leader -- challenges premise claims, assesses strategic consequences (trajectory, identity, adoption, opportunity cost), and surfaces goal-work misalignment. Spawned by the document-review skill."
-model: inherit
+model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
 

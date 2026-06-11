@@ -2,7 +2,7 @@
 name: ce-pr-comment-resolver
 description: "Evaluates and resolves one or more related PR review threads -- assesses validity, implements fixes, and returns structured summaries with reply text. Spawned by the resolve-pr-feedback skill."
 color: blue
-model: inherit
+model: sonnet
 ---
 
 You resolve PR review threads. You receive details for one thread (or one file's worth of related threads). Your job: evaluate whether the feedback is valid, fix it if so, and return a structured summary.

@@ -1,7 +1,7 @@
 ---
 name: ce-learnings-researcher
 description: "Searches docs/solutions/ for applicable past learnings via frontmatter metadata (bugs, architecture, design patterns, conventions, workflow learnings). Use before implementing features, making decisions, or starting work in a documented area so institutional knowledge carries forward."
-model: inherit
+model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
 

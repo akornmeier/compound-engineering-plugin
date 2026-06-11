@@ -90,6 +90,16 @@ Important: Just because the developer's installed plugin may be out of date, it'
 
 **The `ce-` prefix is required for every new skill and agent — no exceptions.** Three legacy skills (`every-style-editor`, `file-todos`, `lfg`) predate the rule and remain unprefixed; they are pinned in `tests/frontmatter.test.ts` as the only allowed exceptions. Do not add to that allowlist. When adding a new skill, the directory name, the SKILL.md `name:` frontmatter, and any README references must all start with `ce-`. The frontmatter test enforces this and will fail on a missing prefix.
 
+## Agent Model Tiering
+
+Every agent declares an explicit `model:` in its frontmatter — never omit it. Three tiers:
+
+- **`inherit`** — reserved for agents whose findings justify session-tier capability, where a missed finding has direct cost: exploit-level security analysis and adversarial review (`ce-correctness-reviewer`, `ce-security-reviewer`, `ce-adversarial-reviewer`, `ce-adversarial-document-reviewer`, `ce-security-sentinel`). On an Opus/Fable session these deliberately run at the session's model.
+- **`sonnet`** — the default for persona reviewers, researchers, and design/workflow agents: judgment within a well-specified rubric. This mirrors ce-code-review's dispatch-time tiering ("mid-tier model for reviewers"), whose docs warn that running reviewers on the session model "silently multiplies the cost of a review by 3-4x" on Opus sessions.
+- **`haiku`** — mechanical, checklist- or template-driven work (e.g., `ce-coherence-reviewer`).
+
+Dispatch-time `model` parameters override frontmatter (precedence: `CLAUDE_CODE_SUBAGENT_MODEL` env var > dispatch param > frontmatter > session model), so skills that tier at dispatch keep working unchanged — the frontmatter is the default that protects unparameterized dispatches from silently inheriting an expensive session model. A new agent using `inherit` needs a stated reason in its PR.
+
 ## Known External Limitations
 
 **Proof HITL surfaces a ghost "AI collaborator" agent** (noted 2026-04-16, may change): The Proof API auto-joins any header-less `/state` read under a synthetic `ai:auto-<hash>` identity, so docs created by the `skills/proof/` HITL workflow show a phantom participant alongside `Compound Engineering`. The only way to suppress it is to set `ownerId: "agent:ai:compound-engineering"` on create — but that transfers document ownership to the agent and prevents the user from claiming it into their Proof library, so we don't use it. Treat as cosmetic noise; don't reintroduce the `ownerId` workaround. Tracked upstream: https://github.com/EveryInc/proof/issues/951.
