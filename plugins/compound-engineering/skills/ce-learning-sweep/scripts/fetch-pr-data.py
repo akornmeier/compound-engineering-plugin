@@ -242,6 +242,27 @@ def _diff_path(header_line: str):
     return rest
 
 
+def _diff_git_path(diff_git_line: str):
+    """Extract the file path from a ``diff --git a/<x> b/<y>`` header.
+
+    Used as a fallback for binary diffs that emit no ``+++``/``---`` lines.
+    We take the ``b/<y>`` side (the new path). Git may quote paths containing
+    special characters with double-quotes; strip those when present.
+    """
+    # Format: "diff --git a/<x> b/<y>"  (11 chars prefix: "diff --git ")
+    rest = diff_git_line[11:].strip()
+    # The b-side is the second half after splitting on " b/". Because the a-side
+    # itself starts with "a/", find the last occurrence of " b/" as delimiter.
+    idx = rest.rfind(" b/")
+    if idx == -1:
+        return None
+    b_part = rest[idx + 3:]  # strip " b/"
+    # Unquote git-quoted paths (double-quoted with C-style escapes).
+    if b_part.startswith('"') and b_part.endswith('"'):
+        b_part = b_part[1:-1].encode("raw_unicode_escape").decode("unicode_escape")
+    return b_part if b_part else None
+
+
 def _is_excluded(path: str) -> bool:
     if path is None:
         return False
@@ -287,6 +308,9 @@ def filter_diff(diff_text: str):
                 if p is not None:
                     path = p
                     break
+        # Binary diffs have no +++/--- lines; fall back to the diff --git header.
+        if path is None and block.startswith("diff --git "):
+            path = _diff_git_path(block.splitlines()[0])
         if path is not None and _is_excluded(path):
             excluded.append(path)
             continue

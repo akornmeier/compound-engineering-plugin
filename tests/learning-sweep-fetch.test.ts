@@ -253,6 +253,32 @@ describe("fetch-pr-data: degradation and caps", () => {
     expect(envelope.flags.excluded_paths).toContain("assets/app.min.js")
   })
 
+  test("binary diff block (no +++/--- lines) is excluded by diff --git header fallback", async () => {
+    // git/gh emits binary diffs without +++/--- lines; the filter must use the
+    // diff --git header to extract the path so exclusion still applies.
+    const binaryDiff =
+      "diff --git a/src/widget.ts b/src/widget.ts\n" +
+      "index 1111111..2222222 100644\n" +
+      "--- a/src/widget.ts\n" +
+      "+++ b/src/widget.ts\n" +
+      "@@ -1,1 +1,1 @@\n" +
+      "+x\n" +
+      "diff --git a/bun.lockb b/bun.lockb\n" +
+      "index 3333333..4444444 100644\n" +
+      "Binary files a/bun.lockb and b/bun.lockb differ\n"
+    const diffFile = path.join(os.tmpdir(), `ls-bindiff-${Date.now()}.diff`)
+    fs.writeFileSync(diffFile, binaryDiff)
+    try {
+      const { envelope } = await run({ env: { GH_SHIM_DIFF_FILE: diffFile } })
+      expect(envelope.status).toBe("ok")
+      expect(envelope.diff_raw).toContain("src/widget.ts")
+      expect(envelope.diff_raw).not.toContain("bun.lockb")
+      expect(envelope.flags.excluded_paths).toContain("bun.lockb")
+    } finally {
+      fs.rmSync(diffFile, { force: true })
+    }
+  })
+
   test("generated-dir exclusion matches path segments, not substrings", async () => {
     // src/redist and prebuild contain "dist"/"build" as substrings but are not
     // generated dirs; only a real dist/build *segment* should be excluded.
