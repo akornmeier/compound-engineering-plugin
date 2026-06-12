@@ -2,7 +2,7 @@
 name: ce-learning-sweep
 description: "Sweep one merged PR -- its diff, commit messages, and review threads -- for candidate learnings, then report keepers with a confidence anchor, a three-way corpus verdict, and self-contained capture fuel for hand-routing through /ce-compound. Report-only: writes nothing to the repo. Use to check whether a merged PR carried durable learnings that have not been documented yet, before or instead of capturing them one at a time."
 argument-hint: "[PR number, #N, URL, or owner/repo#N]"
-allowed-tools: Bash(python3 *fetch-pr-data.py), Bash(python3 *scan-corpus.py), Read, Grep, AskUserQuestion, ToolSearch, Skill
+allowed-tools: Bash(python3 *fetch-pr-data.py), Bash(python3 *scan-corpus.py), Bash(python3 *stage-captures.py), Bash(python3 *validate-staged-keepers.py), Read, Grep, AskUserQuestion, ToolSearch, Skill
 ---
 
 # Merged-PR Learning Sweep
@@ -124,20 +124,82 @@ Field rules:
 - `overlapping_doc`: string path to the overlapping doc when verdict is `overlaps-existing` or `already-documented`; `null` otherwise.
 - `capture_fuel`: the keeper's full capture-fuel text verbatim — learning statement, evidence excerpts, and suggested track/category — exactly as rendered in the report. This is the blob `ce-compound mode:headless` consumes; do not summarize or reformat it. Track/category stays a prose hint inside this field, never a separate structured field.
 
-## Phase 7: Post-report routing (only when the report has keepers)
+## Phase 7: Batched keep/reject decision and staging (only when the report has keepers)
 
-After presenting a report that contains at least one keeper, ask the user what to do next using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema is not loaded — a pending schema load is not a reason to fall back to text), `request_user_input` in Codex, `ask_user` in Gemini, `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors — never silently skip the question.
+### Batched keep/reject decision
 
-Offer these options (third-person agent references, self-contained labels, user-intent phrasing):
+Present the keepers as a **numbered list in chat** — this is the primary format. A single-select blocking tool cannot express a mixed keep/reject over N keepers (`AskUserQuestion` is single-select with a 4-option cap), so the numbered list is mandatory here, not a fallback. Reserve the platform's blocking question tool for binary follow-ups only (see the parallel-PR probe below).
 
-1. **"Capture a keeper through /ce-compound now"** — the user picks one keeper; route it.
-2. **"See the full capture fuel for a keeper"** — the user picks one keeper; the agent prints its complete capture-fuel block verbatim.
-3. **"Done — close the sweep"** — end the turn with no further action.
+Format each line: `<keeper_id>. [<anchor>] <one-line learning summary> — verdict: <new|overlaps-existing|already-documented>`
 
-Routing for each selection:
+Keepers with verdict `already-documented` are listed but marked **not stageable** — they appear as citation-only entries and cannot be approved for staging.
 
-**If the user selects "Capture a keeper through /ce-compound now":** ask which keeper (or infer it if only one keeper exists), then invoke the `ce-compound` skill via the platform's skill-invocation primitive (`Skill` in Claude Code, `Skill` in Codex, the equivalent on Gemini/Pi), passing that keeper's capture fuel as the context argument. For an `overlaps-existing` keeper, steer explicitly to ce-compound's Full mode and name the overlapping doc as context so ce-compound can decide create-vs-update-in-place. Do not merely tell the user to type `/ce-compound` — fire the invocation now. `ce-compound`'s own overlap check is authoritative at write time.
+After presenting the list, ask the user to reply with which keepers to keep. Accepted reply forms:
+- `keep k1 k3` — approve specific keepers by id
+- `keep all` — approve every stageable keeper
+- `reject all` — reject all keepers; short-circuit to the empty-set terminal
 
-**If the user selects "See the full capture fuel for a keeper":** ask which keeper, print its full capture-fuel block (learning statement, evidence excerpts, track/category suggestion) exactly as the report template specifies, then re-offer this same menu.
+Wait for the reply. Never proceed without it.
 
-**If the user selects "Done — close the sweep":** end the turn. Write nothing.
+### Empty approved set
+
+When the approved set is empty (all rejected, or only `already-documented` keepers exist):
+
+End immediately with no branch and no PR. Terminal line:
+
+`status: swept — nothing staged`
+
+### Persist the decision
+
+Immediately after the user's reply, write the approved subset to the run scratch:
+
+```
+/tmp/compound-engineering/ce-learning-sweep/<run-id>/approved-keepers.json
+```
+
+Same envelope structure as `keepers.json` (array of objects with `keeper_id`, `anchor`, `verdict`, `overlapping_doc`, `capture_fuel`), filtered to the approved set only. This survives session interruption.
+
+### Parallel-PR probe
+
+Before opening the staging worktree, check for an existing OPEN capture PR for this source PR. The Phase 1 fetch envelope carries a `capture_pr` field (added by U4's already-swept probe); use that if present. Fallback when the field is absent:
+
+```bash
+gh pr list --search "learning-capture/pr-<source-pr>- in:title label:learning-capture" --state open --json number,url
+```
+
+If an open capture PR exists: surface a named warning identifying the PR number and URL, then ask the user for explicit confirmation via the platform's blocking question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_user` in Gemini) with two options:
+
+1. **"Open a superseding branch (replaces the existing PR)"**
+2. **"Stop — do not open a parallel branch"**
+
+If the user stops: end the turn. If the user confirms superseding: proceed. Silent duplication is never valid.
+
+### Staging drive (non-empty approved set)
+
+Load `references/staging-workflow.md` now and drive the staging sub-flow:
+
+1. Run `stage-captures.py open` — branch on the JSON `status`:
+   - `worktree_open` → proceed
+   - `invalid_source_pr` / `no_forge` → report reason; end turn
+
+2. For each approved keeper, invoke the `ce-compound` skill via the platform's skill-invocation primitive (`Skill` in Claude Code, `Skill` in Codex, the equivalent on Gemini/Pi) using the dispatch template in `references/staging-workflow.md` (write-root directive, side-effect suppression, clean-checkout assertion).
+
+   Branch on ce-compound's terminal signal:
+   - `Documentation complete` → record the actual action for the PR body; continue to next keeper
+   - `Documentation skipped` or any other outcome → run `stage-captures.py abort` immediately; report the failed keeper; end turn with:
+
+     `status: staging failed — <detail of failed keeper>`
+
+   **Atomic batch**: on any keeper failure, roll back the entire batch. Never produce a partial PR. The user retries the whole batch.
+
+3. Assemble the PR body from actual ce-compound outcomes per the template in `references/staging-workflow.md`. Write it via `mktemp` and pass as `--body-file`.
+
+4. Run `stage-captures.py finalize` with the canonical title `docs(learnings): capture <K> entries from PR #<source-pr>` — branch on the JSON `status`:
+   - `pr_open` → proceed to merge path
+   - `nothing_staged` → end with `status: swept — nothing staged`
+   - `orphan_branch` → report the branch name for cleanup; end turn
+
+5. Run `stage-captures.py merge` (re-validation executes inside the staging worktree before teardown) — branch on the JSON `status`:
+   - `merged` → terminal line: `status: captured — <K> entr(y/ies) merged (PR #<pr_number>)`
+   - `awaiting_attention` → report the PR URL and that a comment was posted; terminal line: `status: staged — awaiting attention (PR #<pr_number>)`
+   - `validation_failed` → report the collision/staleness detail for reconciliation; terminal line: `status: staging failed — <detail>`

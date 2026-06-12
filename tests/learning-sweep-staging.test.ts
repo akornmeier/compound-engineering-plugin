@@ -30,6 +30,11 @@ const STAGING_WORKFLOW = path.join(
   "../plugins/compound-engineering/skills/ce-learning-sweep/references/staging-workflow.md",
 )
 
+const LEARNING_SWEEP_SKILL = path.join(
+  __dirname,
+  "../plugins/compound-engineering/skills/ce-learning-sweep/SKILL.md",
+)
+
 let shimDir: string       // holds the gh shim
 let binDir: string        // holds git + python3 symlinks + gh shim
 let noGhDir: string       // holds git + python3 but NO gh shim
@@ -774,6 +779,10 @@ describe("stage-captures: pinned constants across consumers", () => {
         "../plugins/compound-engineering/skills/ce-learning-sweep/scripts/validate-staged-keepers.py",
       ),
     },
+    {
+      label: "SKILL.md (ce-learning-sweep)",
+      filePath: LEARNING_SWEEP_SKILL,
+    },
   ]
 
   for (const { label, filePath } of consumerFiles) {
@@ -787,4 +796,69 @@ describe("stage-captures: pinned constants across consumers", () => {
       expect(content).toContain("learning-capture/")
     })
   }
+})
+
+// ---------------------------------------------------------------------------
+// Phase 7 static pins (SKILL.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Static assertions on ce-learning-sweep/SKILL.md Phase 7 content.
+ * These pin the key behavioral contracts so drift in any copy fails CI:
+ *   - batched numbered-list keep/reject decision with "keep" reply protocol
+ *   - empty-approved-set terminal line
+ *   - atomic-abort rule (no partial PR)
+ *   - parallel-PR confirmation requirement
+ */
+describe("ce-learning-sweep SKILL.md: Phase 7 static contracts", () => {
+  let skillContent: string
+
+  beforeAll(() => {
+    skillContent = fs.readFileSync(LEARNING_SWEEP_SKILL, "utf8")
+  })
+
+  test('batched decision uses numbered list in chat as primary format (not blocking tool)', () => {
+    expect(skillContent).toContain("numbered list in chat")
+  })
+
+  test('"keep" reply protocol is present (e.g. "keep k1 k3" / "keep all" / "reject all")', () => {
+    expect(skillContent).toContain("keep k1")
+    expect(skillContent).toContain("keep all")
+    expect(skillContent).toContain("reject all")
+  })
+
+  test('empty approved set terminal line is present verbatim', () => {
+    expect(skillContent).toContain("status: swept — nothing staged")
+  })
+
+  test('atomic-abort rule states no partial PR on keeper failure', () => {
+    // The rule must name the "no partial PR" constraint and atomic rollback.
+    expect(skillContent).toContain("partial PR")
+    expect(skillContent).toContain("retries the whole batch")
+  })
+
+  test('parallel-PR confirmation is required before opening a second branch', () => {
+    // The skill must name the parallel-PR warning and require confirmation.
+    expect(skillContent).toContain("parallel")
+    expect(skillContent).toContain("confirmation")
+  })
+
+  test('staging terminal lines are present verbatim', () => {
+    expect(skillContent).toContain("status: captured —")
+    expect(skillContent).toContain("status: staged — awaiting attention")
+    expect(skillContent).toContain("status: staging failed —")
+  })
+
+  test('approved-keepers.json scratch file is referenced for decision persistence', () => {
+    expect(skillContent).toContain("approved-keepers.json")
+  })
+
+  test('references/staging-workflow.md is loaded at staging time', () => {
+    expect(skillContent).toContain("references/staging-workflow.md")
+  })
+
+  test('allowed-tools frontmatter includes stage-captures.py and validate-staged-keepers.py', () => {
+    expect(skillContent).toContain("stage-captures.py")
+    expect(skillContent).toContain("validate-staged-keepers.py")
+  })
 })
