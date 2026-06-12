@@ -5,11 +5,11 @@ qualifying `ce-verify-work` probe run. Each file records a single per-plan
 reading: which Implementation Units drifted, which were attempted, with cited
 evidence, named by `<plan-basename>--<run_id>.md`.
 
-It is the **capture half** of the rework/churn measurement loop. A future
-Signal-gate aggregation will glob these events (plus session history) and
-derive an aggregate drift rate across runs — the input the gate reads. That
-aggregation, the gate, and its threshold are deferred follow-up work; this
-directory only produces their inputs.
+It is the **capture half** of the rework/churn measurement loop. The read
+half exists: the `ce-drift-report` skill globs these events and derives
+per-plan and cross-plan drift rates at read time (report-only, rates never
+stored). A future Signal-gate consuming that aggregate (plus session
+history), the gate itself, and its threshold remain deferred follow-up work.
 
 **These are not human-authored learnings.** They are per-run telemetry, not
 institutional knowledge. They deliberately live outside `docs/solutions/` so
