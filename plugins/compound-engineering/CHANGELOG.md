@@ -9,6 +9,42 @@ All notable changes to the compound-engineering plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.0](https://github.com/akornmeier/compound-engineering-plugin/compare/compound-engineering-v3.10.0...compound-engineering-v3.11.0) (2026-06-12)
+
+
+### Features
+
+* **drift-report:** add ce-drift-report skill with read-time aggregation ([f44ffd9](https://github.com/akornmeier/compound-engineering-plugin/commit/f44ffd99a2b86710a98f0b421674cd8f7346c8b1))
+* **learning-sweep:** add ce-learning-sweep skill with gate and verdict rubrics ([78ae5c0](https://github.com/akornmeier/compound-engineering-plugin/commit/78ae5c0bc214d20120fdbe1d12dbe3cd39699ee1))
+* **learning-sweep:** add headless and autonomous modes with already-swept probe ([33c7c25](https://github.com/akornmeier/compound-engineering-plugin/commit/33c7c253ebc018ae278b5e9dcecd03f152599d0b))
+* **learning-sweep:** add PR mining script with explicit state machine ([cb40a71](https://github.com/akornmeier/compound-engineering-plugin/commit/cb40a71f25dd33e675b616d4ad312cf05b6e2fd8))
+* **learning-sweep:** add report-only merged-PR learning sweep ([01fd1eb](https://github.com/akornmeier/compound-engineering-plugin/commit/01fd1eb57e7f612825f790fd62430f48be3c0da4))
+* **learning-sweep:** add staged-capture state machine and ce-compound write seam ([635f0d2](https://github.com/akornmeier/compound-engineering-plugin/commit/635f0d2aaaee431c21a81871eb90699e3bfd11aa))
+* **learning-sweep:** add tolerant corpus-scan script ([898380a](https://github.com/akornmeier/compound-engineering-plugin/commit/898380af6105f89a7964862b54e538ced1a0da90))
+* **learning-sweep:** close the capture loop and drift read edge ([217957c](https://github.com/akornmeier/compound-engineering-plugin/commit/217957c2646e04a85ab9b6285484731f5c42480d))
+* **learning-sweep:** document the merge-trigger recipe and unattended-run hygiene ([59dbb5a](https://github.com/akornmeier/compound-engineering-plugin/commit/59dbb5a2ba1ebab650e059438b0da0f8e217d4d6))
+* **learning-sweep:** emit machine-readable keeper envelope alongside the report ([c0c40f5](https://github.com/akornmeier/compound-engineering-plugin/commit/c0c40f5febf5d662950232679ffd6ce404206aa9))
+* **learning-sweep:** enforce hard re-validation gate on capture PRs ([aea3d58](https://github.com/akornmeier/compound-engineering-plugin/commit/aea3d5827d6b5e5af9e59db664b8190b6be389ce))
+* **learning-sweep:** replace per-keeper routing with batched decision and merge-on-green ([2fdfa52](https://github.com/akornmeier/compound-engineering-plugin/commit/2fdfa52ed59004d176896ce44c36867d7a790a45))
+* **plan-handoff:** persist review findings and offer fresh-session handoff ([087d3ec](https://github.com/akornmeier/compound-engineering-plugin/commit/087d3ecac9ecc4b8b1b55b3fa3f734b064da6fba))
+* **verify-work:** auto-capture a drift event after every attempted-bearing run ([67682e7](https://github.com/akornmeier/compound-engineering-plugin/commit/67682e7df16887ddf942a8e456b0296f92de4513))
+* **verify-work:** capture a durable drift event per probe run ([0a98b59](https://github.com/akornmeier/compound-engineering-plugin/commit/0a98b598c5f1d5127dd5200f0b5c9ab302a6f61b))
+
+
+### Bug Fixes
+
+* **learning-sweep:** clarify degraded_inputs key is present only when degraded ([29c5841](https://github.com/akornmeier/compound-engineering-plugin/commit/29c584153c5db3dd64986a80641fda0905d68365))
+* **learning-sweep:** exclude binary diff blocks lacking +++/--- headers ([#15](https://github.com/akornmeier/compound-engineering-plugin/issues/15)) ([d099bf3](https://github.com/akornmeier/compound-engineering-plugin/commit/d099bf36ebb7123d86a01c616bc62c48c21a2f36))
+* **review:** apply ce-code-review findings [#1](https://github.com/akornmeier/compound-engineering-plugin/issues/1)-[#15](https://github.com/akornmeier/compound-engineering-plugin/issues/15) ([ccfb41d](https://github.com/akornmeier/compound-engineering-plugin/commit/ccfb41d56bdb3cead53edc6a9ee81b80f866d75a))
+* **review:** apply code-review findings [#1](https://github.com/akornmeier/compound-engineering-plugin/issues/1)-[#5](https://github.com/akornmeier/compound-engineering-plugin/issues/5), [#7](https://github.com/akornmeier/compound-engineering-plugin/issues/7)-[#13](https://github.com/akornmeier/compound-engineering-plugin/issues/13), [#15](https://github.com/akornmeier/compound-engineering-plugin/issues/15) ([99ad198](https://github.com/akornmeier/compound-engineering-plugin/commit/99ad198b69cb5c42d3b2610f577e2b4338146e31))
+* **verify-work:** close code-review gaps in capture contract ([f93e379](https://github.com/akornmeier/compound-engineering-plugin/commit/f93e379d929cde5278e37f9614f621fe4ebaa8b5))
+
+
+### Performance Improvements
+
+* **agents:** tier agent models — sonnet default, inherit for top-tier analysis ([4ff4cc5](https://github.com/akornmeier/compound-engineering-plugin/commit/4ff4cc50eeb20cd8ede74ff6c05b90879a76a2c1))
+* **agents:** tier agent models — sonnet default, inherit reserved for top-tier analysis ([a3f78df](https://github.com/akornmeier/compound-engineering-plugin/commit/a3f78df2c5482732f052a874be81607f56269e81))
+
 ## [3.10.0](https://github.com/EveryInc/compound-engineering-plugin/compare/compound-engineering-v3.9.4...compound-engineering-v3.10.0) (2026-06-03)
 
 
