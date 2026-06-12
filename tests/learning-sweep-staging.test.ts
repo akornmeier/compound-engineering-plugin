@@ -601,6 +601,7 @@ describe("stage-captures: error states", () => {
 describe("stage-captures: merge", () => {
   test("validator failing → validation_failed status", async () => {
     const runId = uniqueRunId()
+    await doOpen(runId, 7)
     const validator = makeValidator(1, "collision detected")
 
     const { envelope, exitCode } = await run({
@@ -615,6 +616,47 @@ describe("stage-captures: merge", () => {
     expect(exitCode).toBe(0)
     expect(envelope.status).toBe("validation_failed")
     expect(envelope.detail).toContain("collision detected")
+
+    fs.rmSync(validator, { force: true })
+    await run({ subcmd: "teardown", args: ["--run-id", runId] })
+  })
+
+  test("validator missing → validation_failed, refuses to merge unvalidated", async () => {
+    const runId = uniqueRunId()
+    await doOpen(runId, 7)
+
+    const { envelope, exitCode } = await run({
+      subcmd: "merge",
+      args: [
+        "--run-id", runId,
+        "--pr", "99",
+        "--validator", "/nonexistent/validator.py",
+        "--timeout", "5",
+      ],
+    })
+    expect(exitCode).toBe(0)
+    expect(envelope.status).toBe("validation_failed")
+    expect(envelope.detail).toContain("validator missing")
+
+    await run({ subcmd: "teardown", args: ["--run-id", runId] })
+  })
+
+  test("staging worktree missing → validation_failed, cannot re-validate", async () => {
+    const runId = uniqueRunId()
+    const validator = makeValidator(0)
+
+    const { envelope, exitCode } = await run({
+      subcmd: "merge",
+      args: [
+        "--run-id", runId,
+        "--pr", "99",
+        "--validator", validator,
+        "--timeout", "5",
+      ],
+    })
+    expect(exitCode).toBe(0)
+    expect(envelope.status).toBe("validation_failed")
+    expect(envelope.detail).toContain("worktree not found")
 
     fs.rmSync(validator, { force: true })
   })
@@ -724,6 +766,13 @@ describe("stage-captures: pinned constants across consumers", () => {
     {
       label: "staging-workflow.md",
       filePath: STAGING_WORKFLOW,
+    },
+    {
+      label: "validate-staged-keepers.py",
+      filePath: path.join(
+        __dirname,
+        "../plugins/compound-engineering/skills/ce-learning-sweep/scripts/validate-staged-keepers.py",
+      ),
     },
   ]
 

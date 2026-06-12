@@ -355,36 +355,46 @@ def cmd_merge(args) -> NoReturn:
         validator_path = Path(__file__).parent / "validate-staged-keepers.py"
 
     if not validator_path.exists():
-        # Validator not yet implemented (U5 dependency); skip validation.
-        validation_skipped = True
-    else:
-        validation_skipped = False
+        # The gate is hard: a missing validator is a broken install, never a
+        # reason to merge unvalidated.
+        emit({
+            "status": "validation_failed",
+            "pr": pr_number,
+            "detail": f"validator missing at {validator_path} — refusing to merge unvalidated",
+        })
 
     if not gh_available():
         emit({"status": "no_forge", "detail": "gh CLI unavailable or not authenticated"})
 
-    # Re-run validation against trusted copy.
-    if not validation_skipped:
-        try:
-            val_proc = subprocess.run(
-                ["python3", str(validator_path), str(pr_number)],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=120,
-            )
-        except subprocess.TimeoutExpired:
-            emit({
-                "status": "validation_failed",
-                "pr": pr_number,
-                "detail": "validator timed out",
-            })
-        if val_proc.returncode != 0:
-            emit({
-                "status": "validation_failed",
-                "pr": pr_number,
-                "detail": (val_proc.stdout + val_proc.stderr).strip()[:500],
-            })
+    # Re-run validation against the trusted copy, inside the staging worktree
+    # (HEAD there is the capture branch the validator diffs against origin/main).
+    wt_dir = worktree_dir(run_id)
+    if not wt_dir.exists():
+        emit({
+            "status": "validation_failed",
+            "pr": pr_number,
+            "detail": f"staging worktree not found at {wt_dir} — cannot re-validate",
+        })
+    try:
+        val_proc = subprocess.run(
+            ["python3", str(validator_path), "--repo", str(wt_dir)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        emit({
+            "status": "validation_failed",
+            "pr": pr_number,
+            "detail": "validator timed out",
+        })
+    if val_proc.returncode != 0:
+        emit({
+            "status": "validation_failed",
+            "pr": pr_number,
+            "detail": (val_proc.stdout + val_proc.stderr).strip()[:500],
+        })
 
     # Watch checks with bounded timeout.
     checks_green = False

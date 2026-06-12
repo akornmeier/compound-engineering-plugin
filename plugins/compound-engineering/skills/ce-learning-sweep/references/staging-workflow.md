@@ -24,7 +24,8 @@ finalize
   → status: pr_open         → PR ready; proceed to merge or wait
   → status: orphan_branch   → push ok but PR create failed; report branch for cleanup
 
-merge (interactive/autonomous path only)
+merge (interactive/autonomous path only — run BEFORE teardown: re-validation
+       executes inside the staging worktree, so it must still exist)
   → status: validation_failed   → report; user must reconcile
   → status: awaiting_attention  → checks red/timeout; comment posted; await human
   → status: merged              → corpus entry committed; teardown complete
