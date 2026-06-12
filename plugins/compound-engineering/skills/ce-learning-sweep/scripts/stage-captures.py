@@ -23,8 +23,8 @@ recognized state. Non-zero exit is reserved for unexpected internal errors.
 Statuses (envelope ``status``):
     worktree_open       open succeeded; worktree ready for ce-compound dispatches
     invalid_source_pr   source-pr is not a positive integer; no git/gh invoked
-    no_forge            gh binary absent or not authenticated (open/finalize/merge only)
-    staging_error       open: git operation failed (fetch timeout, worktree-add failure)
+    no_forge            gh binary absent or not authenticated (open/finalize gh-check/merge)
+    staging_error       git operation failed (open: fetch/worktree-add; finalize: commit/push)
     invalid_body_file   finalize: --body-file path not found or empty before any git mutation
     nothing_staged      finalize: nothing in docs/solutions to commit
     pr_open             finalize: PR created; number + url in envelope
@@ -240,7 +240,7 @@ def cmd_finalize(args) -> NoReturn:
             else:
                 # Not staged but present in worktree — warn.
                 if worktree_flag != " " or staged_flag == "?":
-                    warnings.append(path_part)
+                    warnings.append({"type": "unstaged_path", "path": path_part})
 
     if staged_count == 0:
         emit({
@@ -258,7 +258,7 @@ def cmd_finalize(args) -> NoReturn:
     )
     if commit_proc.returncode != 0:
         emit({
-            "status": "no_forge",
+            "status": "staging_error",
             "detail": commit_proc.stderr.strip()[:300] or "git commit failed",
         })
 
@@ -269,7 +269,7 @@ def cmd_finalize(args) -> NoReturn:
     )
     if push_proc.returncode != 0:
         emit({
-            "status": "no_forge",
+            "status": "staging_error",
             "detail": push_proc.stderr.strip()[:300] or "git push failed",
         })
 

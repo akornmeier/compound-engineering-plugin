@@ -422,8 +422,15 @@ def probe_capture_pr(owner: str, repo: str, source_pr: int):
     """Probe for an existing capture PR for the given source PR number.
 
     Searches for any PR (open/merged/closed) whose head branch starts with the
-    ``learning-capture/pr-<n>-`` prefix and carries the ``learning-capture``
-    label. Returns a dict ``{number, state, url}`` when found, or ``None`` when
+    ``learning-capture/pr-<n>-`` prefix. The ``learning-capture`` label is NOT
+    required in the query: label application in finalize is best-effort (a
+    label-create/apply failure is a warning, not a failure state), so a valid
+    capture PR may exist without the label. Requiring the label would introduce
+    false negatives worse than the false-positive risk it prevents. GitHub's
+    ``head:`` search qualifier is also a text match, not an exact one, so
+    results are re-filtered in code on the exact head-branch prefix.
+
+    Returns a dict ``{number, state, url}`` when found, or ``None`` when
     none exists or when the probe fails.
 
     A probe failure must NOT fail the sweep — callers must treat ``None`` as

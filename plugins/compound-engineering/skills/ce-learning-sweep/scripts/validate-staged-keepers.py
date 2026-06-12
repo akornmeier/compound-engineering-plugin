@@ -189,6 +189,11 @@ def get_entry_diff_size(repo_root: str, base_ref: str, file_path: str) -> int:
         ["diff", f"{base_ref}...HEAD", "--", file_path],
         cwd=repo_root,
     )
+    if proc.returncode != 0:
+        sys.stderr.write(
+            f"validate-staged-keepers: git diff failed for '{file_path}': {proc.stderr}\n"
+        )
+        sys.exit(2)
     return len(proc.stdout.encode("utf-8"))
 
 

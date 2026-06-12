@@ -263,6 +263,7 @@ Load `references/staging-workflow.md` now and drive the staging sub-flow:
 4. Run `stage-captures.py finalize` with the canonical title `docs(learnings): capture <K> entries from PR #<source-pr>` — branch on the JSON `status`:
    - `pr_open` → proceed to merge path
    - `nothing_staged` → end with `status: swept — nothing staged`
+   - `staging_error` → run `stage-captures.py abort`; end turn with `status: staging failed — <detail>`
    - `orphan_branch` → report the branch name for cleanup; end turn
    - `invalid_body_file` → report the path; end turn with `status: staging failed — <detail>`
 

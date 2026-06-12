@@ -404,7 +404,9 @@ describe("stage-captures: happy path open → finalize", () => {
     expect(envelope.status).toBe("pr_open")
     // Stray file named in warnings.
     expect(Array.isArray(envelope.warnings)).toBe(true)
-    expect(envelope.warnings.some((w: any) => String(w).includes("stray.txt"))).toBe(true)
+    expect(
+      envelope.warnings.some((w: any) => w.type === "unstaged_path" && w.path.includes("stray.txt")),
+    ).toBe(true)
 
     // Confirm stray.txt was NOT committed (check the worktree's git status after finalize
     // would have committed only allowlisted paths — we can check the gh shim was still called).

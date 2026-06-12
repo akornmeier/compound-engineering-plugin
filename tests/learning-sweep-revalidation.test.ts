@@ -45,8 +45,8 @@ async function createFixture(baseDir: string): Promise<FixtureRepo> {
   const origin = path.join(baseDir, "origin.git")
   const clone = path.join(baseDir, "clone")
 
-  await Bun.spawn(["git", "init", "--bare", "-q", origin]).exited
-  await Bun.spawn(["git", "init", "-q", clone]).exited
+  await Bun.spawn(["git", "init", "--bare", "-q", "-b", "main", origin]).exited
+  await Bun.spawn(["git", "init", "-q", "-b", "main", clone]).exited
 
   const g = (args: string[]) => Bun.spawn(["git", ...args], {
     cwd: clone,
@@ -61,8 +61,7 @@ async function createFixture(baseDir: string): Promise<FixtureRepo> {
   fs.writeFileSync(path.join(clone, "README.md"), "# repo\n")
   await g(["add", "README.md"])
   await g(["commit", "-q", "-m", "initial"])
-  await g(["push", "-q", "origin", "HEAD:main"])
-  await g(["branch", "-q", "-u", "origin/main"])
+  await g(["push", "-q", "-u", "origin", "HEAD:main"])
 
   return { origin, clone }
 }
@@ -954,6 +953,86 @@ esac
     // stderr must mention shallow clone so the operator knows the fix.
     expect(stderr.toLowerCase()).toMatch(/shallow/)
   }, 15_000)
+})
+
+// ---------------------------------------------------------------------------
+// Error: git diff failure in get_entry_diff_size → hard error (exit 2)
+// ---------------------------------------------------------------------------
+
+describe("error: git diff failure in get_entry_diff_size exits 2", () => {
+  test("non-zero git diff for size check → exit 2 with stderr message", async () => {
+    // Use a fake git that:
+    // - succeeds for rev-parse, fetch, diff --name-status (returns one added file)
+    // - fails (exit 128) for the per-entry diff used by get_entry_diff_size
+    const fakeGitDir = fs.mkdtempSync(path.join(baseDir, "diffsize-fakegit-"))
+    const fakeGit = path.join(fakeGitDir, "git")
+    const fakeRepo = fs.mkdtempSync(path.join(baseDir, "diffsize-repo-"))
+
+    // Create the file on disk so Gate 1 allowlist check passes.
+    const solutionsDir = path.join(fakeRepo, "docs", "solutions", "workflow")
+    fs.mkdirSync(solutionsDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(solutionsDir, "entry.md"),
+      "---\ntitle: Entry\ntags: [t]\n---\n# Content\n",
+    )
+
+    fs.writeFileSync(
+      fakeGit,
+      `#!/bin/bash
+ARGS="$*"
+case "$ARGS" in
+  *"rev-parse --show-toplevel"*)
+    echo "${fakeRepo}"
+    exit 0
+    ;;
+  *"fetch"*)
+    exit 0
+    ;;
+  *"diff --name-status"*)
+    printf 'A\\tdocs/solutions/workflow/entry.md\\n'
+    exit 0
+    ;;
+  *"diff"*)
+    # Simulate a git diff failure (e.g., bad base ref).
+    echo "fatal: bad object 'origin/main'" >&2
+    exit 128
+    ;;
+  *"ls-tree"*)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`,
+      { mode: 0o755 },
+    )
+
+    const realPython = Bun.which("python3") ?? "python3"
+    const fakeGitBinDir = fs.mkdtempSync(path.join(baseDir, "diffsize-gitbin-"))
+    fs.symlinkSync(fakeGit, path.join(fakeGitBinDir, "git"))
+    fs.symlinkSync(realPython, path.join(fakeGitBinDir, "python3"))
+
+    const proc = Bun.spawn(
+      ["python3", VALIDATOR, "--branch", "learning-capture/pr-diffsize-err", "--no-fetch"],
+      {
+        cwd: fakeRepo,
+        env: {
+          PATH: fakeGitBinDir,
+          HOME: process.env.HOME ?? "",
+          GIT_CONFIG_NOSYSTEM: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
+
+    const stderr = await new Response(proc.stderr).text()
+    const exitCode = await proc.exited
+
+    expect(exitCode).toBe(2)
+    expect(stderr).toMatch(/git diff failed/)
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ open
 
 finalize
   → status: invalid_body_file  → abort; body-file path missing or empty before any git op
+  → status: staging_error      → git commit or push failed; detail names the failure
   → status: nothing_staged     → no PR created; report "swept clean"
   → status: pr_open            → PR ready; proceed to merge or wait
   → status: orphan_branch      → push ok but PR create failed; report branch for cleanup
@@ -44,10 +45,10 @@ JSON statuses to branch on (from `stage-captures.py`):
 - `worktree_open` — `worktree_path` and `branch` in envelope
 - `invalid_source_pr` — source-pr was not a positive integer; no git/gh invoked
 - `no_forge` — gh absent or unauthenticated (open/finalize/merge)
-- `staging_error` — git fetch or worktree-add failed in open; detail names the failure
+- `staging_error` — git operation failed; detail names the failure (open: fetch/worktree-add; finalize: commit/push)
 - `invalid_body_file` — body-file path not found or empty; caught before any git mutation
 - `nothing_staged` — finalize found no allowlisted changes to commit
-- `pr_open` — `pr_number` and `pr_url` in envelope; `warnings` list if present
+- `pr_open` — `pr_number` and `pr_url` in envelope; `warnings` list of structured objects if present (e.g. `{"type": "unstaged_path", "path": ...}` or `{"type": "label_create_failed", ...}`)
 - `orphan_branch` — `branch` in envelope; push succeeded but PR creation failed twice
 - `validation_failed` — re-validation at merge time rejected the staged entries
 - `awaiting_attention` — checks red/timed out, or merge failed; comment posted on PR; envelope may carry `warnings` with `comment_failed` entry
