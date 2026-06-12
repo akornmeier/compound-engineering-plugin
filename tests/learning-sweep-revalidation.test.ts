@@ -690,6 +690,273 @@ describe("error: malformed staged file", () => {
 })
 
 // ---------------------------------------------------------------------------
+// Finding #3: subprocess timeout — hung git exits 2 with stderr message
+// ---------------------------------------------------------------------------
+
+describe("Finding #3: git subprocess timeout exits 2", () => {
+  test("hung git command exits 2 and names the timed-out args in stderr", async () => {
+    // Build a fake git that sleeps indefinitely (simulates a hung git operation).
+    const fakeGitDir = fs.mkdtempSync(path.join(baseDir, "timeout-fakegit-"))
+    const fakeGit = path.join(fakeGitDir, "git")
+    const fakeRepo = fs.mkdtempSync(path.join(baseDir, "timeout-repo-"))
+
+    // Use /bin/sleep directly (absolute path) so the fake git's sleep is
+    // immune to PATH restrictions — a PATH-only sleep would be "not found" when
+    // system dirs are absent, making the fake git exit immediately instead of
+    // hanging as intended.
+    fs.writeFileSync(
+      fakeGit,
+      `#!/bin/bash
+ARGS="$*"
+case "$ARGS" in
+  *"rev-parse --show-toplevel"*)
+    echo "${fakeRepo}"
+    exit 0
+    ;;
+  *"fetch"*)
+    exit 0
+    ;;
+  *)
+    # Simulate a hung git operation.
+    /bin/sleep 100
+    exit 0
+    ;;
+esac
+`,
+      { mode: 0o755 },
+    )
+
+    // Write a thin wrapper that overrides GIT_TIMEOUT_SECONDS to 1 second,
+    // then calls the real validator's main().
+    const realPython = Bun.which("python3") ?? "python3"
+    const wrapperDir = fs.mkdtempSync(path.join(baseDir, "timeout-wrapper-"))
+    const wrapper = path.join(wrapperDir, "run_with_short_timeout.py")
+    fs.writeFileSync(
+      wrapper,
+      `import sys
+import importlib.util
+
+spec = importlib.util.spec_from_file_location(
+    "validate_staged_keepers",
+    ${JSON.stringify(VALIDATOR)},
+)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+# Override the timeout constant before calling main so subprocess.run uses 1s.
+mod.GIT_TIMEOUT_SECONDS = 1
+mod.main(sys.argv)
+`,
+    )
+
+    const fakeGitBinDir = fs.mkdtempSync(path.join(baseDir, "timeout-gitbin-"))
+    fs.symlinkSync(fakeGit, path.join(fakeGitBinDir, "git"))
+    fs.symlinkSync(realPython, path.join(fakeGitBinDir, "python3"))
+
+    const proc = Bun.spawn(
+      [
+        "python3", wrapper,
+        "--branch", "learning-capture/pr-timeout",
+        "--no-fetch",
+      ],
+      {
+        cwd: fakeRepo,
+        env: {
+          PATH: fakeGitBinDir,
+          HOME: process.env.HOME ?? "",
+          GIT_CONFIG_NOSYSTEM: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
+
+    const stderr = await new Response(proc.stderr).text()
+    const exitCode = await proc.exited
+
+    expect(exitCode).toBe(2)
+    // stderr must name the timed-out git args so the failure is diagnosable.
+    expect(stderr).toMatch(/timed out/)
+  }, 15_000)
+})
+
+// ---------------------------------------------------------------------------
+// Finding #15+#12: disallowed_change_type — D/R/C entries rejected
+// ---------------------------------------------------------------------------
+
+describe("Finding #15+#12: deletions and renames rejected", () => {
+  test("deleting a corpus doc → disallowed_change_type naming D and path, non-zero exit", async () => {
+    const dir = uniqueDir("delete")
+    const { clone } = await createFixture(dir)
+
+    const g = (args: string[]) => Bun.spawn(["git", ...args], {
+      cwd: clone,
+      env: GIT_TEST_ENV,
+    }).exited
+
+    // Put a corpus doc on origin/main first.
+    writeDoc(clone, "docs/solutions/workflow/to-delete.md", {
+      title: "To Delete",
+      tags: ["delete-me"],
+    })
+    await g(["add", "docs/solutions/workflow/to-delete.md"])
+    await g(["commit", "-q", "-m", "docs: add to-delete.md"])
+    await g(["push", "-q", "origin", "HEAD:main"])
+    await g(["branch", "-q", "-u", "origin/main"])
+
+    // Create a capture branch that deletes the corpus doc.
+    await g(["checkout", "-b", "learning-capture/pr-delete"])
+    await g(["rm", "docs/solutions/workflow/to-delete.md"])
+    await g(["commit", "-q", "-m", "docs(learnings): delete corpus doc"])
+
+    const { envelope, exitCode } = await runValidator({
+      cwd: clone,
+      branch: "learning-capture/pr-delete",
+    })
+
+    expect(exitCode).toBe(1)
+    expect(envelope.status).toBe("failed")
+    const dct = envelope.failures.find((f: any) => f.type === "disallowed_change_type")
+    expect(dct).toBeDefined()
+    expect(dct.status).toBe("D")
+    expect(dct.paths.some((p: string) => p.includes("to-delete.md"))).toBe(true)
+  })
+
+  test("renaming a corpus doc within docs/solutions → disallowed_change_type naming both paths, non-zero exit", async () => {
+    const dir = uniqueDir("rename")
+    const { clone } = await createFixture(dir)
+
+    const g = (args: string[]) => Bun.spawn(["git", ...args], {
+      cwd: clone,
+      env: GIT_TEST_ENV,
+    }).exited
+
+    // Put a corpus doc on origin/main.
+    writeDoc(clone, "docs/solutions/workflow/original-name.md", {
+      title: "Original Name",
+      tags: ["rename-test"],
+    })
+    await g(["add", "docs/solutions/workflow/original-name.md"])
+    await g(["commit", "-q", "-m", "docs: add original-name.md"])
+    await g(["push", "-q", "origin", "HEAD:main"])
+    await g(["branch", "-q", "-u", "origin/main"])
+
+    // Create a capture branch that renames the corpus doc.
+    await g(["checkout", "-b", "learning-capture/pr-rename"])
+    await g(["mv", "docs/solutions/workflow/original-name.md", "docs/solutions/workflow/new-name.md"])
+    await g(["commit", "-q", "-m", "docs(learnings): rename corpus doc"])
+
+    const { envelope, exitCode } = await runValidator({
+      cwd: clone,
+      branch: "learning-capture/pr-rename",
+    })
+
+    expect(exitCode).toBe(1)
+    expect(envelope.status).toBe("failed")
+    const dct = envelope.failures.find((f: any) => f.type === "disallowed_change_type")
+    expect(dct).toBeDefined()
+    expect(dct.status).toBe("R")
+    // Both the source and destination paths must be present.
+    expect(dct.paths.some((p: string) => p.includes("original-name.md"))).toBe(true)
+    expect(dct.paths.some((p: string) => p.includes("new-name.md"))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Finding #13: shallow clone → hard error (exit 2) when modified_paths exist
+// ---------------------------------------------------------------------------
+
+describe("Finding #13: shallow clone fails hard when modified files present", () => {
+  test("merge-base failure with modified paths → exit 2 with shallow-clone hint in stderr", async () => {
+    // Use a fake git that returns success for everything EXCEPT merge-base,
+    // which fails (simulates shallow clone where the common ancestor is absent).
+    // We also need a modified file in the diff so Gate 3 is reached.
+    const fakeGitDir = fs.mkdtempSync(path.join(baseDir, "shallow-fakegit-"))
+    const fakeGit = path.join(fakeGitDir, "git")
+    const fakeRepo = fs.mkdtempSync(path.join(baseDir, "shallow-repo-"))
+
+    // Create a real file so read_staged_frontmatter can read it.
+    const solutionsDir = path.join(fakeRepo, "docs", "solutions", "workflow")
+    fs.mkdirSync(solutionsDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(solutionsDir, "modified.md"),
+      "---\ntitle: Modified\ntags: [mod]\n---\n# Content\n",
+    )
+
+    fs.writeFileSync(
+      fakeGit,
+      `#!/bin/bash
+ARGS="$*"
+case "$ARGS" in
+  *"rev-parse --show-toplevel"*)
+    echo "${fakeRepo}"
+    exit 0
+    ;;
+  *"fetch"*)
+    exit 0
+    ;;
+  *"diff --name-status"*)
+    # One modified file — triggers the staleness gate.
+    printf 'M\\tdocs/solutions/workflow/modified.md\\n'
+    exit 0
+    ;;
+  *"diff"*)
+    # Small diff for size cap.
+    echo "+modified line"
+    exit 0
+    ;;
+  *"merge-base"*)
+    # Simulate shallow clone: merge-base cannot find common ancestor.
+    echo "fatal: Not a valid object name" >&2
+    exit 128
+    ;;
+  *"log"*)
+    exit 0
+    ;;
+  *"ls-tree"*)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`,
+      { mode: 0o755 },
+    )
+
+    const realPython = Bun.which("python3") ?? "python3"
+    const fakeGitBinDir = fs.mkdtempSync(path.join(baseDir, "shallow-gitbin-"))
+    fs.symlinkSync(fakeGit, path.join(fakeGitBinDir, "git"))
+    fs.symlinkSync(realPython, path.join(fakeGitBinDir, "python3"))
+
+    const proc = Bun.spawn(
+      [
+        "python3", VALIDATOR,
+        "--branch", "learning-capture/pr-shallow",
+        "--no-fetch",
+      ],
+      {
+        cwd: fakeRepo,
+        env: {
+          PATH: fakeGitBinDir,
+          HOME: process.env.HOME ?? "",
+          GIT_CONFIG_NOSYSTEM: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
+
+    const stderr = await new Response(proc.stderr).text()
+    const exitCode = await proc.exited
+
+    expect(exitCode).toBe(2)
+    // stderr must mention shallow clone so the operator knows the fix.
+    expect(stderr.toLowerCase()).toMatch(/shallow/)
+  }, 15_000)
+})
+
+// ---------------------------------------------------------------------------
 // CI wiring: run the validator against THIS repo when on a capture branch
 // ---------------------------------------------------------------------------
 

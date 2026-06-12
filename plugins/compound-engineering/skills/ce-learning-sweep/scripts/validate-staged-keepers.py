@@ -22,6 +22,7 @@ Statuses (``status`` field in output envelope):
     failed                      one or more gate violations; see ``failures``
 
 Failure ``type`` values in the ``failures`` list:
+    disallowed_change_type      change type is not A or M (e.g. D, R, C)
     allowlist_violation         staged path not under docs/solutions/**/*.md
     traversal_path              staged path contains ``..`` or is absolute
     entry_too_large             single entry diff exceeds PER_ENTRY_CAP_BYTES
@@ -51,6 +52,10 @@ from typing import Any
 LABEL = "learning-capture"
 BRANCH_PREFIX = "learning-capture/"
 
+# Timeout for git subprocess calls. Any git operation that hangs past this
+# is treated as a gate failure (exit 2) so CI does not block indefinitely.
+GIT_TIMEOUT_SECONDS = 60
+
 # Gate caps.
 PER_ENTRY_CAP_BYTES = 32_768   # 32 KB per staged entry diff
 PR_CAP_BYTES = 163_840         # 160 KB total diff across all staged entries
@@ -71,13 +76,21 @@ OVERLAP_COLLISION_THRESHOLD = 2
 
 
 def run_git(args: list[str], cwd: str | None = None, check: bool = False) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git"] + args,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        check=check,
-    )
+    try:
+        return subprocess.run(
+            ["git"] + args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=check,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        sys.stderr.write(
+            f"validate-staged-keepers: git {' '.join(args)!r} timed out after "
+            f"{GIT_TIMEOUT_SECONDS}s\n"
+        )
+        sys.exit(2)
 
 
 def emit_pass() -> None:
@@ -141,10 +154,12 @@ def find_repo_root(start: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_diff_name_status(repo_root: str, base_ref: str) -> list[tuple[str, str]]:
-    """Return list of (status_char, path) for three-dot diff against base_ref.
+def get_diff_name_status(repo_root: str, base_ref: str) -> list[tuple[str, list[str]]]:
+    """Return list of (status_char, [paths]) for three-dot diff against base_ref.
 
     Status chars: A=added, M=modified, D=deleted, R=renamed, C=copied, etc.
+    For rename/copy entries git name-status emits two paths (old TAB new);
+    both are carried so failure messages can name the rename source.
     We only care about A, M for gate purposes; others are collected too.
     """
     proc = run_git(
@@ -159,12 +174,12 @@ def get_diff_name_status(repo_root: str, base_ref: str) -> list[tuple[str, str]]
         line = line.strip()
         if not line:
             continue
-        parts = line.split("\t", 2)
+        parts = line.split("\t")
         if len(parts) < 2:
             continue
         status = parts[0][0]  # First char: A, M, D, R, C, etc.
-        path_str = parts[-1]  # Last field is the new path for renames; original otherwise
-        results.append((status, path_str))
+        paths = parts[1:]     # One path for A/M/D; two paths for R*/C* (old, new)
+        results.append((status, paths))
     return results
 
 
@@ -372,8 +387,27 @@ def run_gates(
     modified_paths: list[str] = []
     all_touched_paths: list[str] = []
 
+    # --- Gate 0: change-type allowlist (capture PRs may only ADD or MODIFY) ---
+    # D/R/C entries bypass size caps, collision gate, and staleness gate, so
+    # an autonomous PR could delete or rename corpus docs and ride green CI.
+    # Reject any entry whose status is not A or M.
+    for status, paths in name_status:
+        if status not in ("A", "M"):
+            failures.append({
+                "type": "disallowed_change_type",
+                "status": status,
+                "paths": paths,
+                "detail": (
+                    f"capture PRs may only add or modify solution docs; "
+                    f"change type '{status}' is not allowed "
+                    f"(paths: {', '.join(paths)})"
+                ),
+            })
+
     # --- Gate 1: content allowlist ---
-    for status, p in name_status:
+    for status, paths in name_status:
+        # For rename/copy entries, the destination (new) path is the last element.
+        p = paths[-1]
         all_touched_paths.append(p)
 
         # Traversal safety — must check before allowlist.
@@ -400,7 +434,7 @@ def run_gates(
             added_paths.append(p)
         elif status == "M":
             modified_paths.append(p)
-        # D/R/C: allowed path form but we don't need to gate further.
+        # D/R/C: already rejected above; skip accumulation.
 
     # --- Size caps ---
     # Per-entry cap; the per-PR total is the sum of the per-entry diffs (the
@@ -474,6 +508,14 @@ def run_gates(
     # --- Gate 3: stale_update_in_place (modified files only, merge path) ---
     if modified_paths:
         merge_base = get_merge_base(repo_root, base_ref)
+        if not merge_base:
+            sys.stderr.write(
+                "validate-staged-keepers: could not determine merge base between "
+                f"HEAD and {base_ref}. This usually means a shallow clone "
+                "(actions/checkout default fetch-depth: 1). "
+                "Re-run with fetch-depth: 0 or add a deepening fetch step.\n"
+            )
+            sys.exit(2)
         for p in modified_paths:
             if origin_main_modified_since(repo_root, merge_base, p):
                 failures.append({

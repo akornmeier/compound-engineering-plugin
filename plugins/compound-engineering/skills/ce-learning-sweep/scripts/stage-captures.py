@@ -23,12 +23,14 @@ recognized state. Non-zero exit is reserved for unexpected internal errors.
 Statuses (envelope ``status``):
     worktree_open       open succeeded; worktree ready for ce-compound dispatches
     invalid_source_pr   source-pr is not a positive integer; no git/gh invoked
-    no_forge            gh binary absent or not authenticated
+    no_forge            gh binary absent or not authenticated (open/finalize/merge only)
+    staging_error       open: git operation failed (fetch timeout, worktree-add failure)
+    invalid_body_file   finalize: --body-file path not found or empty before any git mutation
     nothing_staged      finalize: nothing in docs/solutions to commit
     pr_open             finalize: PR created; number + url in envelope
     orphan_branch       finalize: push ok but gh pr create failed twice; branch named
     validation_failed   merge: validator exited non-zero
-    awaiting_attention  merge: checks red/timeout; comment posted on PR
+    awaiting_attention  merge: checks red/timeout; comment posted on PR (warnings if comment failed)
     merged              merge: squash-merged and branch deleted
     rolled_back         abort: worktree removed and local branch ref deleted
     torn_down           teardown: worktree removed (idempotent)
@@ -162,10 +164,10 @@ def cmd_open(args) -> NoReturn:
     try:
         fetch = run_cmd(["git", "fetch", "--no-tags", "origin", "main"])
     except subprocess.TimeoutExpired:
-        emit({"status": "no_forge", "detail": "git fetch timed out"})
+        emit({"status": "staging_error", "detail": "git fetch timed out"})
     if fetch.returncode != 0:
         emit({
-            "status": "no_forge",
+            "status": "staging_error",
             "detail": fetch.stderr.strip()[:300] or "git fetch origin main failed",
         })
 
@@ -175,10 +177,10 @@ def cmd_open(args) -> NoReturn:
             ["git", "worktree", "add", str(wt_dir), "-b", branch, "origin/main"]
         )
     except subprocess.TimeoutExpired:
-        emit({"status": "no_forge", "detail": "git worktree add timed out"})
+        emit({"status": "staging_error", "detail": "git worktree add timed out"})
     if wt_add.returncode != 0:
         emit({
-            "status": "no_forge",
+            "status": "staging_error",
             "detail": wt_add.stderr.strip()[:300] or "git worktree add failed",
         })
 
@@ -201,6 +203,15 @@ def cmd_finalize(args) -> NoReturn:
     title: str = args.title
     body_file: str = args.body_file
     source_pr = parse_source_pr(args.source_pr)
+
+    # Validate body-file FIRST — before any git mutation.  A bad path would
+    # otherwise strand a pushed branch with no PR body to create from.
+    body_path = Path(body_file)
+    if not body_path.exists() or body_path.stat().st_size == 0:
+        emit({
+            "status": "invalid_body_file",
+            "detail": f"body-file not found or empty: {body_file}",
+        })
 
     if not gh_available():
         emit({"status": "no_forge", "detail": "gh CLI unavailable or not authenticated"})
@@ -261,10 +272,6 @@ def cmd_finalize(args) -> NoReturn:
             "status": "no_forge",
             "detail": push_proc.stderr.strip()[:300] or "git push failed",
         })
-
-    # Ensure body-file exists.
-    if not Path(body_file).exists():
-        emit({"status": "no_forge", "detail": f"body-file not found: {body_file}"})
 
     # Ensure label exists (warning if it fails, not a failure state).
     label_warning = ensure_label(LABEL, wt_dir)
@@ -361,9 +368,20 @@ def cmd_merge(args) -> NoReturn:
             "pr": pr_number,
             "detail": f"staging worktree not found at {wt_dir} — cannot re-validate",
         })
+
+    # Resolve the worktree's actual branch so the validator is not misled by
+    # GITHUB_HEAD_REF (which, inside a pull_request Actions context, points to
+    # the SOURCE PR's head ref, not the capture branch).
+    branch_proc = run_cmd(["git", "branch", "--show-current"], cwd=wt_dir)
+    wt_branch = branch_proc.stdout.strip() if branch_proc.returncode == 0 else ""
+
+    val_cmd = ["python3", str(validator_path), "--repo", str(wt_dir)]
+    if wt_branch:
+        val_cmd += ["--branch", wt_branch]
+
     try:
         val_proc = subprocess.run(
-            ["python3", str(validator_path), "--repo", str(wt_dir)],
+            val_cmd,
             capture_output=True,
             text=True,
             check=False,
@@ -382,12 +400,13 @@ def cmd_merge(args) -> NoReturn:
             "detail": (val_proc.stdout + val_proc.stderr).strip()[:500],
         })
 
-    # Watch checks with bounded timeout.
+    # Watch checks with bounded timeout.  gh pr checks does NOT support a
+    # --timeout flag (gh 2.94+); the subprocess-level timeout= already bounds
+    # wall clock.  Only --watch, --interval (-i), and --fail-fast are valid.
     checks_green = False
     try:
         watch_proc = run_cmd(
-            ["gh", "pr", "checks", str(pr_number), "--watch",
-             f"--timeout={checks_timeout}"],
+            ["gh", "pr", "checks", str(pr_number), "--watch"],
             timeout=checks_timeout + 30,
         )
         checks_green = watch_proc.returncode == 0
@@ -396,15 +415,24 @@ def cmd_merge(args) -> NoReturn:
 
     if not checks_green:
         # Comment on the PR and report awaiting_attention.
-        run_cmd([
+        comment_warnings = []
+        comment_proc = run_cmd([
             "gh", "pr", "comment", str(pr_number),
             "--body", "Automated merge paused: checks did not pass. Please review and merge manually.",
         ])
-        emit({
+        if comment_proc.returncode != 0:
+            comment_warnings.append({
+                "type": "comment_failed",
+                "detail": comment_proc.stderr.strip()[:200],
+            })
+        envelope: dict = {
             "status": "awaiting_attention",
             "pr": pr_number,
             "detail": "checks red or timed out; comment posted",
-        })
+        }
+        if comment_warnings:
+            envelope["warnings"] = comment_warnings
+        emit(envelope)
 
     # Merge.
     merge_proc = run_cmd(

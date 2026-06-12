@@ -129,15 +129,35 @@ if [ "$sub" = "pr" ]; then
     exit 0
   fi
   if [ "$pr_sub" = "checks" ]; then
+    # Reject unknown flags — gh pr checks only supports --watch, -i/--interval,
+    # and --fail-fast (gh 2.94+).  Any other flag is an error.
+    for arg in "$@"; do
+      case "$arg" in
+        --watch|--fail-fast|-i|--interval|--interval=*)
+          ;;
+        --*)
+          echo "unknown flag: $arg" >&2
+          exit 1
+          ;;
+      esac
+    done
     if [ "$GH_SHIM_CHECKS_FAIL" = "1" ]; then
       exit 1
     fi
     exit 0
   fi
   if [ "$pr_sub" = "merge" ]; then
+    if [ "$GH_SHIM_MERGE_FAIL" = "1" ]; then
+      echo "merge failed" >&2
+      exit 1
+    fi
     exit 0
   fi
   if [ "$pr_sub" = "comment" ]; then
+    if [ "$GH_SHIM_COMMENT_FAIL" = "1" ]; then
+      echo "comment failed" >&2
+      exit 1
+    fi
     exit 0
   fi
   exit 0
@@ -720,6 +740,193 @@ describe("stage-captures: merge", () => {
     expect(log).toContain("pr comment")
 
     fs.rmSync(validator, { force: true })
+    await run({ subcmd: "teardown", args: ["--run-id", runId] })
+  })
+
+  // Finding #2+#5: gh pr checks must NOT receive --timeout=N (not a real flag).
+  // The shim now rejects unknown flags — a merge on the green path proves only
+  // valid flags were passed.
+  test("merge green path does NOT pass --timeout flag to gh pr checks", async () => {
+    const runId = uniqueRunId()
+    await doOpen(runId, 7)
+    const validator = makeValidator(0)
+
+    const { envelope, exitCode } = await run({
+      subcmd: "merge",
+      args: [
+        "--run-id", runId,
+        "--pr", "99",
+        "--validator", validator,
+        "--timeout", "5",
+      ],
+    })
+    // If --timeout were passed to gh pr checks, the shim would exit 1 and
+    // checks_green would be false → awaiting_attention.  merged proves it wasn't.
+    expect(exitCode).toBe(0)
+    expect(envelope.status).toBe("merged")
+
+    // Confirm checks was called and no unknown-flag error in log.
+    const log = ghLog()
+    expect(log).toContain("pr checks")
+    expect(log).not.toContain("--timeout=")
+
+    fs.rmSync(validator, { force: true })
+  })
+
+  // Finding #4: --branch is passed to the validator so GITHUB_HEAD_REF in a
+  // pull_request Actions context does not cause skipped_not_capture_branch.
+  test("merge passes --branch <worktree-branch> to validator argv", async () => {
+    const runId = uniqueRunId()
+    const openEnv = await doOpen(runId, 7)
+    expect(openEnv.status).toBe("worktree_open")
+
+    // Fake validator that writes its argv to a tmp file so we can inspect it.
+    const argvFile = path.join(os.tmpdir(), `validator-argv-${Date.now()}.txt`)
+    const validator = path.join(os.tmpdir(), `fake-validator-argv-${Date.now()}.py`)
+    fs.writeFileSync(
+      validator,
+      `#!/usr/bin/env python3\nimport sys\nwith open(${JSON.stringify(argvFile)}, "w") as f:\n    f.write(" ".join(sys.argv))\nsys.exit(0)\n`,
+    )
+    fs.chmodSync(validator, 0o755)
+
+    // Set GITHUB_HEAD_REF to something that is NOT the capture branch, to prove
+    // the script does not rely on the env var and instead resolves the branch
+    // from the worktree directly.
+    const { envelope } = await run({
+      subcmd: "merge",
+      args: [
+        "--run-id", runId,
+        "--pr", "99",
+        "--validator", validator,
+        "--timeout", "5",
+      ],
+      env: { GITHUB_HEAD_REF: "some-other-pr-branch" },
+    })
+
+    // Merge should succeed (validator exits 0).
+    expect(envelope.status).toBe("merged")
+
+    // The recorded argv must contain --branch learning-capture/...
+    const argv = fs.existsSync(argvFile) ? fs.readFileSync(argvFile, "utf8") : ""
+    expect(argv).toContain("--branch")
+    expect(argv).toMatch(/--branch\s+learning-capture\/pr-7-/)
+
+    fs.rmSync(validator, { force: true })
+    if (fs.existsSync(argvFile)) fs.rmSync(argvFile)
+  })
+
+  // Finding #11: merge failure after checks-green → awaiting_attention.
+  test("gh pr merge failure after green checks → awaiting_attention", async () => {
+    const runId = uniqueRunId()
+    await doOpen(runId, 7)
+    const validator = makeValidator(0)
+
+    const { envelope, exitCode } = await run({
+      subcmd: "merge",
+      args: [
+        "--run-id", runId,
+        "--pr", "99",
+        "--validator", validator,
+        "--timeout", "5",
+      ],
+      env: { GH_SHIM_MERGE_FAIL: "1" },
+    })
+    expect(exitCode).toBe(0)
+    expect(envelope.status).toBe("awaiting_attention")
+    expect(envelope.pr).toBe(99)
+    expect(envelope.detail).toBeTruthy()
+
+    fs.rmSync(validator, { force: true })
+    await run({ subcmd: "teardown", args: ["--run-id", runId] })
+  })
+
+  // Finding #10: when gh pr comment fails, envelope carries a warnings entry.
+  test("comment failure on awaiting_attention path → warnings array with comment_failed", async () => {
+    const runId = uniqueRunId()
+    await doOpen(runId, 7)
+    const validator = makeValidator(0)
+
+    const { envelope, exitCode } = await run({
+      subcmd: "merge",
+      args: [
+        "--run-id", runId,
+        "--pr", "99",
+        "--validator", validator,
+        "--timeout", "5",
+      ],
+      env: { GH_SHIM_CHECKS_FAIL: "1", GH_SHIM_COMMENT_FAIL: "1" },
+    })
+    expect(exitCode).toBe(0)
+    expect(envelope.status).toBe("awaiting_attention")
+    expect(Array.isArray(envelope.warnings)).toBe(true)
+    const commentWarn = envelope.warnings.find((w: any) => w.type === "comment_failed")
+    expect(commentWarn).toBeDefined()
+
+    fs.rmSync(validator, { force: true })
+    await run({ subcmd: "teardown", args: ["--run-id", runId] })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Finding #8: invalid_body_file — finalize validates body-file before git ops
+// ---------------------------------------------------------------------------
+
+describe("stage-captures: invalid_body_file", () => {
+  test("finalize with nonexistent body file → invalid_body_file, no push", async () => {
+    const runId = uniqueRunId()
+    const openEnv = await doOpen(runId)
+    expect(openEnv.status).toBe("worktree_open")
+
+    const wt = openEnv.worktree_path
+    // Add a real file so it would otherwise proceed to commit.
+    fs.mkdirSync(path.join(wt, "docs", "solutions", "best-practices"), { recursive: true })
+    fs.writeFileSync(
+      path.join(wt, "docs", "solutions", "best-practices", "entry.md"),
+      "# Entry\n",
+    )
+
+    const { envelope, exitCode } = await run({
+      subcmd: "finalize",
+      args: [
+        "--run-id", runId,
+        "--source-pr", "7",
+        "--title", "docs(learnings): test",
+        "--body-file", "/nonexistent/path/body.md",
+      ],
+    })
+
+    expect(exitCode).toBe(0)
+    expect(envelope.status).toBe("invalid_body_file")
+    expect(envelope.detail).toContain("/nonexistent/path/body.md")
+
+    // No push should have occurred.
+    expect(ghLog()).not.toContain("push")
+    expect(ghLog()).not.toContain("pr create")
+
+    await run({ subcmd: "teardown", args: ["--run-id", runId] })
+  })
+
+  test("finalize with empty body file → invalid_body_file", async () => {
+    const runId = uniqueRunId()
+    await doOpen(runId)
+
+    const emptyBody = path.join(os.tmpdir(), `empty-body-${Date.now()}.md`)
+    fs.writeFileSync(emptyBody, "")
+
+    const { envelope } = await run({
+      subcmd: "finalize",
+      args: [
+        "--run-id", runId,
+        "--source-pr", "7",
+        "--title", "docs(learnings): test",
+        "--body-file", emptyBody,
+      ],
+    })
+
+    expect(envelope.status).toBe("invalid_body_file")
+    expect(ghLog()).not.toContain("pr create")
+
+    fs.rmSync(emptyBody, { force: true })
     await run({ subcmd: "teardown", args: ["--run-id", runId] })
   })
 })

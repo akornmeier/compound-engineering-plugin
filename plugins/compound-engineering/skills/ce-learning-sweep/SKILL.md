@@ -184,6 +184,8 @@ Same staging as headless, then the merge path:
    - `merged` → `status: captured — <K> entr(y/ies) merged (PR #<pr_number>)`
    - `awaiting_attention` → `status: staged — awaiting attention (PR #<pr_number>)` — never auto-close
    - `validation_failed` → `status: staging failed — <detail>`
+   - `no_forge` → PR exists and waits; `status: staged — awaiting attention (PR #<n>)`
+   - `invalid_body_file` → `status: staging failed — <detail>`
 
 On red checks or watch timeout, the comment is already posted by `stage-captures.py`; end with the `awaiting_attention` terminal line.
 
@@ -244,6 +246,7 @@ Load `references/staging-workflow.md` now and drive the staging sub-flow:
 1. Run `stage-captures.py open` — branch on the JSON `status`:
    - `worktree_open` → proceed
    - `invalid_source_pr` / `no_forge` → report reason; end turn
+   - `staging_error` → report the git failure reason; end turn
 
 2. For each approved keeper, invoke the `ce-compound` skill via the platform's skill-invocation primitive (`Skill` in Claude Code, `Skill` in Codex, the equivalent on Gemini/Pi) using the dispatch template in `references/staging-workflow.md` (write-root directive, side-effect suppression, clean-checkout assertion).
 
@@ -261,8 +264,10 @@ Load `references/staging-workflow.md` now and drive the staging sub-flow:
    - `pr_open` → proceed to merge path
    - `nothing_staged` → end with `status: swept — nothing staged`
    - `orphan_branch` → report the branch name for cleanup; end turn
+   - `invalid_body_file` → report the path; end turn with `status: staging failed — <detail>`
 
 5. Run `stage-captures.py merge` (re-validation executes inside the staging worktree before teardown) — branch on the JSON `status`:
    - `merged` → terminal line: `status: captured — <K> entr(y/ies) merged (PR #<pr_number>)`
-   - `awaiting_attention` → report the PR URL and that a comment was posted; terminal line: `status: staged — awaiting attention (PR #<pr_number>)`
+   - `awaiting_attention` → report the PR URL and that a comment was posted (check `warnings` for `comment_failed`); terminal line: `status: staged — awaiting attention (PR #<pr_number>)`
    - `validation_failed` → report the collision/staleness detail for reconciliation; terminal line: `status: staging failed — <detail>`
+   - `no_forge` → PR exists and waits; end turn with `status: staged — awaiting attention (PR #<n>)` — report that forge access was lost at merge time
