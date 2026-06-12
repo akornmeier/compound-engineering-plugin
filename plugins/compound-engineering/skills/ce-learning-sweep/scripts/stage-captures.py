@@ -107,22 +107,12 @@ def gh_available() -> bool:
 
 
 def ensure_label(label: str, worktree: Path) -> dict | None:
-    """Create the label if it does not exist. Returns warning dict or None."""
-    # Check if label exists
+    """Ensure the label exists. Returns warning dict or None.
+
+    `gh label create --force` is idempotent — creates when absent, updates
+    when present — so no existence pre-check is needed.
+    """
     try:
-        check = run_cmd(
-            ["gh", "label", "list", "--json", "name"],
-            cwd=worktree,
-        )
-        if check.returncode == 0:
-            try:
-                labels = json.loads(check.stdout)
-                existing = [lbl.get("name") for lbl in labels]
-                if label in existing:
-                    return None
-            except json.JSONDecodeError:
-                pass
-        # Create the label (blue color)
         create = run_cmd(
             ["gh", "label", "create", label, "--color", "0075ca", "--force"],
             cwd=worktree,
@@ -143,17 +133,21 @@ def ensure_label(label: str, worktree: Path) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def cmd_open(args) -> NoReturn:
-    run_id: str = args.run_id
-    source_pr_raw: str = args.source_pr
-
-    # Validate source_pr is a positive integer BEFORE any git/gh invocation.
+def parse_source_pr(raw: str) -> int:
+    """Validate the source PR is a positive integer BEFORE any git/gh
+    invocation; emits `invalid_source_pr` (and exits) otherwise."""
     try:
-        source_pr = int(source_pr_raw)
+        source_pr = int(raw)
         if source_pr <= 0:
             raise ValueError("non-positive")
     except (ValueError, TypeError):
-        emit({"status": "invalid_source_pr", "source_pr": source_pr_raw})
+        emit({"status": "invalid_source_pr", "source_pr": raw})
+    return source_pr
+
+
+def cmd_open(args) -> NoReturn:
+    run_id: str = args.run_id
+    source_pr = parse_source_pr(args.source_pr)
 
     if not gh_available():
         emit({"status": "no_forge", "detail": "gh CLI unavailable or not authenticated"})
@@ -204,17 +198,9 @@ def cmd_open(args) -> NoReturn:
 
 def cmd_finalize(args) -> NoReturn:
     run_id: str = args.run_id
-    source_pr_raw: str = args.source_pr
     title: str = args.title
     body_file: str = args.body_file
-
-    # Validate source_pr.
-    try:
-        source_pr = int(source_pr_raw)
-        if source_pr <= 0:
-            raise ValueError("non-positive")
-    except (ValueError, TypeError):
-        emit({"status": "invalid_source_pr", "source_pr": source_pr_raw})
+    source_pr = parse_source_pr(args.source_pr)
 
     if not gh_available():
         emit({"status": "no_forge", "detail": "gh CLI unavailable or not authenticated"})
@@ -431,8 +417,7 @@ def cmd_merge(args) -> NoReturn:
             "detail": merge_proc.stderr.strip()[:300] or "gh pr merge failed",
         })
 
-    # Teardown worktree.
-    wt_dir = worktree_dir(run_id)
+    # Teardown worktree (wt_dir resolved above for validation).
     if wt_dir.exists():
         run_cmd(["git", "worktree", "remove", "--force", str(wt_dir)])
 

@@ -370,9 +370,7 @@ def main(argv):
         }
     else:
         per_plan, cross_plan = aggregate(events)
-        flagged_count = sum(
-            1 for ev in events if ev["low_confidence"] or ev["degraded"]
-        )
+        flagged_count = cross_plan["flagged"]
         result = {
             "status": "ok",
             "events_dir": events_abspath,

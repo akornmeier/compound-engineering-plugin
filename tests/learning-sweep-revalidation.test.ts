@@ -3,6 +3,12 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 
+const GIT_TEST_ENV = {
+  ...process.env,
+  GIT_CONFIG_NOSYSTEM: "1",
+  HOME: process.env.HOME ?? "",
+}
+
 /**
  * Behavioral tests for validate-staged-keepers.py.
  *
@@ -44,7 +50,7 @@ async function createFixture(baseDir: string): Promise<FixtureRepo> {
 
   const g = (args: string[]) => Bun.spawn(["git", ...args], {
     cwd: clone,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+    env: GIT_TEST_ENV,
   }).exited
 
   await g(["config", "user.email", "test@test.com"])
@@ -65,7 +71,7 @@ async function createFixture(baseDir: string): Promise<FixtureRepo> {
 function git(args: string[], cwd: string): string {
   const proc = Bun.spawnSync(["git", ...args], {
     cwd,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+    env: GIT_TEST_ENV,
   })
   return proc.stdout.toString()
 }
@@ -192,7 +198,7 @@ describe("AE2: fresh fetch detects post-staging corpus collision", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     // Step 2: create capture branch and stage an entry.
@@ -249,7 +255,7 @@ describe("happy path: no corpus overlap", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     await g(["checkout", "-b", "learning-capture/pr-1-happy"])
@@ -282,7 +288,7 @@ describe("edge: non-capture branch → skipped", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     // Add a solutions doc on main itself — should NOT trigger the gate.
@@ -309,7 +315,7 @@ describe("edge: non-capture branch → skipped", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     await g(["checkout", "-b", "feat/some-feature"])
@@ -340,7 +346,7 @@ describe("edge: update-in-place is not a collision", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     // Put an existing doc on origin/main.
@@ -389,7 +395,7 @@ describe("edge: stale_update_in_place blocks merge", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     // Put shared.md on origin/main.
@@ -445,7 +451,7 @@ describe("error: allowlist violation", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     await g(["checkout", "-b", "learning-capture/pr-4-workflow"])
@@ -472,7 +478,7 @@ describe("error: allowlist violation", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     await g(["checkout", "-b", "learning-capture/pr-5-agents"])
@@ -598,7 +604,7 @@ describe("error: oversized entry", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     await g(["checkout", "-b", "learning-capture/pr-6-oversize"])
@@ -637,7 +643,7 @@ describe("error: malformed staged file", () => {
 
     const g = (args: string[]) => Bun.spawn(["git", ...args], {
       cwd: clone,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: process.env.HOME ?? "" },
+      env: GIT_TEST_ENV,
     }).exited
 
     await g(["checkout", "-b", "learning-capture/pr-7-malformed"])

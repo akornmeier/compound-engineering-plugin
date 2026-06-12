@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import { execSync } from "child_process"
 import fs from "fs"
 import os from "os"
 import path from "path"

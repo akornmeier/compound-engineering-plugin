@@ -177,17 +177,6 @@ def get_entry_diff_size(repo_root: str, base_ref: str, file_path: str) -> int:
     return len(proc.stdout.encode("utf-8"))
 
 
-def get_total_diff_size(repo_root: str, base_ref: str, paths: list[str]) -> int:
-    """Return total diff size in bytes across all given paths."""
-    if not paths:
-        return 0
-    proc = run_git(
-        ["diff", f"{base_ref}...HEAD", "--"] + paths,
-        cwd=repo_root,
-    )
-    return len(proc.stdout.encode("utf-8"))
-
-
 # ---------------------------------------------------------------------------
 # Staleness: stale_update_in_place detection
 # ---------------------------------------------------------------------------
@@ -213,74 +202,31 @@ def origin_main_modified_since(repo_root: str, merge_base: str, file_path: str) 
 
 
 # ---------------------------------------------------------------------------
-# Frontmatter parsing (stdlib-only, tolerant — same shape as scan-corpus.py)
+# Frontmatter parsing — delegated to the co-located scan-corpus.py
 # ---------------------------------------------------------------------------
 
-
-def split_frontmatter(text: str) -> tuple[list[str], bool]:
-    lines = text.split("\n")
-    if not lines or lines[0].rstrip() != "---":
-        return [], False
-    for i in range(1, len(lines)):
-        if lines[i].rstrip() == "---":
-            return lines[1:i], False
-    return [], True
+_SCAN_CORPUS: Any = None
 
 
-def unquote(val: str) -> str:
-    if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
-        return val[1:-1]
-    return val
+def scan_corpus_module() -> Any:
+    """Load the co-located scan-corpus.py once (cached).
 
-
-def parse_tags(inline_val: str, fm_lines: list[str], key_idx: int) -> tuple[list[str], int]:
-    if inline_val:
-        flow = inline_val.strip()
-        if flow.startswith("[") and flow.endswith("]"):
-            flow = flow[1:-1]
-        items = [unquote(t.strip()) for t in flow.split(",") if t.strip()]
-        return items, 1
-    items = []
-    consumed = 1
-    j = key_idx + 1
-    while j < len(fm_lines):
-        nxt = fm_lines[j].strip()
-        if nxt.startswith("- "):
-            items.append(unquote(nxt[2:].strip()))
-            consumed += 1
-            j += 1
-        elif not nxt:
-            consumed += 1
-            j += 1
-        else:
-            break
-    return items, consumed
-
-
-def parse_frontmatter(fm_lines: list[str]) -> dict[str, Any]:
-    fields: dict[str, Any] = {}
-    i = 0
-    while i < len(fm_lines):
-        line = fm_lines[i]
-        if not line.strip() or line.startswith((" ", "\t")) or line.lstrip().startswith("#"):
-            i += 1
-            continue
-        if ":" not in line:
-            i += 1
-            continue
-        key, _, raw_val = line.partition(":")
-        key = key.strip()
-        val = raw_val.strip()
-        if key == "tags":
-            tags, consumed = parse_tags(val, fm_lines, i)
-            fields["tags"] = tags
-            i += consumed
-            continue
-        if key in ("title", "module", "problem_type", "category"):
-            if val:
-                fields[key] = unquote(val)
-        i += 1
-    return fields
+    Its tolerant frontmatter parsing is the single implementation shared by
+    the origin/main index build and the staged-file reads. A missing or
+    unloadable scan-corpus.py is a broken install — the gate refuses to
+    validate rather than degrading.
+    """
+    global _SCAN_CORPUS
+    if _SCAN_CORPUS is None:
+        corpus_script = Path(__file__).parent / "scan-corpus.py"
+        spec = importlib.util.spec_from_file_location("scan_corpus", str(corpus_script))
+        if spec is None or spec.loader is None:
+            sys.stderr.write("validate-staged-keepers: could not import scan-corpus.py\n")
+            sys.exit(2)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[attr-defined]
+        _SCAN_CORPUS = mod
+    return _SCAN_CORPUS
 
 
 def read_staged_frontmatter(repo_root: str, file_path: str) -> tuple[dict[str, Any] | None, bool]:
@@ -291,10 +237,11 @@ def read_staged_frontmatter(repo_root: str, file_path: str) -> tuple[dict[str, A
             text = f.read()
     except OSError:
         return None, True
-    fm_lines, malformed = split_frontmatter(text)
+    sc = scan_corpus_module()
+    fm_lines, malformed = sc.split_frontmatter(text)
     if malformed:
         return None, True
-    return parse_frontmatter(fm_lines), False
+    return sc.parse_frontmatter(fm_lines), False
 
 
 # ---------------------------------------------------------------------------
@@ -302,29 +249,13 @@ def read_staged_frontmatter(repo_root: str, file_path: str) -> tuple[dict[str, A
 # ---------------------------------------------------------------------------
 
 
-def load_scan_corpus_module(repo_root: str) -> Any:
-    """Import scan-corpus.py as a module via importlib.util."""
-    script_dir = Path(__file__).parent
-    corpus_script = script_dir / "scan-corpus.py"
-    spec = importlib.util.spec_from_file_location("scan_corpus", str(corpus_script))
-    if spec is None or spec.loader is None:
-        return None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[attr-defined]
-    return mod
-
-
 def build_corpus_index_from_origin_main(repo_root: str, base_ref: str) -> list[dict]:
     """Build a corpus index from origin/main's docs/solutions tree.
 
     Extracts origin/main:docs/solutions into a temp directory, then runs
-    scan-corpus.py's scan() against it.  Falls back to an empty index on
-    any error rather than crashing the gate.
+    scan-corpus.py's scan() against it.
     """
-    scan_corpus = load_scan_corpus_module(repo_root)
-    if scan_corpus is None:
-        sys.stderr.write("validate-staged-keepers: could not import scan-corpus.py\n")
-        return []
+    scan_corpus = scan_corpus_module()
 
     with tempfile.TemporaryDirectory(prefix="vsk-corpus-") as tmpdir:
         solutions_dir = os.path.join(tmpdir, "docs", "solutions")
@@ -472,9 +403,12 @@ def run_gates(
         # D/R/C: allowed path form but we don't need to gate further.
 
     # --- Size caps ---
-    # Per-entry cap.
+    # Per-entry cap; the per-PR total is the sum of the per-entry diffs (the
+    # combined-pathspec diff is the concatenation of the per-path diffs).
+    total_size = 0
     for p in added_paths + modified_paths:
         size = get_entry_diff_size(repo_root, base_ref, p)
+        total_size += size
         if size > PER_ENTRY_CAP_BYTES:
             failures.append({
                 "type": "entry_too_large",
@@ -488,7 +422,6 @@ def run_gates(
             })
 
     # Per-PR total cap.
-    total_size = get_total_diff_size(repo_root, base_ref, added_paths + modified_paths)
     if total_size > PR_CAP_BYTES:
         failures.append({
             "type": "pr_too_large",
