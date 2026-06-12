@@ -30,6 +30,14 @@
 # pulse_pending_metrics: "retention_d7,nps"             # comma-separated strategy metrics awaiting instrumentation; render as 'no data'
 # pulse_excluded_metrics: "north_star"                  # comma-separated strategy metrics intentionally not in pulse
 
+# --- Learning sweep ---
+
+# learning_sweep_autonomous: true  # true | (absent) (default: absent -- headless on triggered runs)
+#   Enables autonomous merge on triggered ce-learning-sweep runs. Required for
+#   the triggered+autonomous pairing: a triggered run carrying mode:autonomous
+#   without this key is downgraded to headless (stages and waits). A manual
+#   in-session mode:autonomous does not require this key.
+
 # --- Output format ---
 # Per-skill output format default. Selects the exclusive format the artifact
 # is written in: `md` produces a markdown file, `html` produces a single

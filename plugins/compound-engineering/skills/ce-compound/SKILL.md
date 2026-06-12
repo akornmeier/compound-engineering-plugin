@@ -498,6 +498,10 @@ Knowledge track:
 
 ### Headless mode
 
+**Published seam (consumer note):** The exact strings `Documentation complete` and `Documentation skipped` at the end of the terminal report blocks below are a published cross-skill contract consumed by `ce-learning-sweep`'s staged-capture flow and pinned by `tests/learning-sweep-staging.test.ts`. Do not reword these terminal signals without updating the consumer test.
+
+**Write-root directive:** When the invocation context names an explicit write root (e.g., "Write root: /tmp/compound-engineering/ce-learning-sweep/<run-id>/staging-worktree"), resolve EVERY write under that root — solution docs, CONCEPTS.md updates, instruction-file (AGENTS.md/CLAUDE.md) edits, and validate-frontmatter invocation targets must all land under the stated root, never in the main checkout. When the context also directs side-effect suppression ("Suppress instruction-file edits and CONCEPTS.md writes"), do not apply instruction-file or CONCEPTS.md changes — surface them in the terminal report as recommendations instead. Carry any such recommendations verbatim in the terminal report so the caller can include them in the PR body.
+
 Emit a structured terminal report and end the turn. No "What's next?" question, no blocking prompt. End with `Documentation complete` as the terminal signal so callers can detect completion.
 
 ```

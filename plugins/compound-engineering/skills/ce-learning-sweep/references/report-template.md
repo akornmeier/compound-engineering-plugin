@@ -24,6 +24,7 @@ One block per keeper, in descending anchor order:
 ```
 ### Keeper: <short learning name>
 
+ID: <keeper_id>
 Anchor: <75 | 100>
 Verdict: <new | overlaps-existing | already-documented>
 
@@ -96,6 +97,28 @@ Discarded (anchor < 50, not learnings): <N>
 ```
 
 Always emit this line (use `0` when none). It carries no per-candidate detail — only the count.
+
+## Keeper envelope (`keepers.json`)
+
+After rendering the report, write `keepers.json` to the run's scratch directory (only when at least one keeper exists):
+
+```
+/tmp/compound-engineering/ce-learning-sweep/<run-id>/keepers.json
+```
+
+The envelope is a JSON array — one object per keeper in `keeper_id` order. Required fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `keeper_id` | string | Stable per-run label in report order: `k1`, `k2`, ... |
+| `anchor` | integer | 75 or 100 |
+| `verdict` | string | `new`, `overlaps-existing`, or `already-documented` |
+| `overlapping_doc` | string \| null | Path to overlapping doc when verdict is non-new; `null` otherwise |
+| `capture_fuel` | string | Full capture-fuel text verbatim — learning statement, evidence excerpts, suggested track/category — exactly as rendered in the report. This is the blob `ce-compound mode:headless` consumes. |
+
+Track/category stays a prose hint inside `capture_fuel`, never a separate structured field (do not duplicate `ce-compound`'s schema).
+
+The report's keeper entries include `ID: <keeper_id>` so the report and envelope cross-reference by id.
 
 ## Terminal status lines (fixed wording — emit exactly one as the final line)
 

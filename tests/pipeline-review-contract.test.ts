@@ -371,8 +371,11 @@ describe("ce-plan review contract", () => {
   test("handoff options expose deeper-review opt-in alongside ce-work", async () => {
     const content = await readRepoFile("plugins/compound-engineering/skills/ce-plan/references/plan-handoff.md")
 
-    // ce-work remains the recommended next-stage action (planning is done; review already ran)
-    expect(content).toContain("**Start `/ce-work`** (recommended) - Begin implementing this plan in the current session")
+    // ce-work remains the lead next-stage action, now split into same-session
+    // and fresh-session routes (R14 handoff hygiene); recommendation is
+    // conditional on whether the session already ran prior pipeline stages.
+    expect(content).toContain("**Start `/ce-work` here (same session)**")
+    expect(content).toContain("**Hand off to a fresh session**")
 
     // Deeper review is a first-class menu fixture so users can engage with surfaced findings
     // without relying on free-form prompting; routed through ce-doc-review without headless mode.
