@@ -82,3 +82,20 @@ The non-workflow execution path a Skill runs when the Workflow tool is unavailab
 
 ### Drift event
 A durable, per-run record of one `ce-verify-work` reading — the cited drifted and attempted Implementation-Unit lists for a single plan, committed under `docs/drift-events/`. The capture half of the rework/churn loop: each qualifying probe run persists what it found, so the **Drift rate** can be derived at read time by aggregating across many events, never stored as a number. Produced by the `ce-verify-work` probe, which classifies via a **Dynamic workflow** on Claude Code. Distinct from a **Learning** — a drift event is machine telemetry, not human institutional knowledge, and deliberately lives outside `docs/solutions/`.
+
+## The loop system
+
+### Loop
+A compounding workflow expressed as a self-running cycle rather than a sequence of human-invoked Skills — the capture loop (merged work → sweep → keep/reject → corpus → richer verdicts), the drift loop (plan → work → probe → drift events → aggregation), the review loop (change → review → fix → triage → ship). Each loop names its **Judgment points**; in default mode the system prompts the human at each, and an explicit per-run autonomous parameter lets the loop's pre-committed gate stand in instead — opt-in, never inherited, with a reviewable record of what the gate decided.
+
+### Judgment point
+A named decision moment inside a **Loop** where default mode stops and prompts the human. The irreversible-commit gates — corpus entry in the capture loop, the ship call in the review loop — are judgment points the human holds by default; everything on either side of the decision (drafting, context handoff, executing the approved action) belongs to the system, not the human.
+
+### Edge graduation
+The lifecycle by which one edge of a **Loop** moves from manual to automatic: report-only first, then a pre-committed signal-gate experiment (ADR 0001 — bar fixed before the first run), and automation only after the gate passes. The capture loop's trigger and write-execution edges graduated via the five-PR experiment; an edge that has not passed its gate stays manual no matter how plausible its automation looks.
+
+### Capture PR
+The staged-proposal pull request the capture loop's write edge produces: approved keepers written by `ce-compound` onto a branch (prefixed `learning-capture/`, labeled `learning-capture`) as proposed Learnings, with merge constituting corpus entry. Staged writes are proposals, not corpus entries, until merged. Capture PRs are excluded from sweep triggers (a sweep never sweeps its own output), and a closed-unmerged capture PR is a durable rejection record that suppresses re-proposal on triggered runs.
+
+### Autonomous mode
+An explicit per-run opt-in (`mode:autonomous`) where a **Loop** traverses its **Judgment points** using the pre-committed gate instead of prompting the human, leaving a reviewable record of every decision the gate made. Distinct from **Headless mode**: headless defers judgment (stages and waits for the human); autonomous decides and acts. Never inherited — pairing autonomy with an automated trigger requires deliberate configuration, and the mode is not recommended until its agreement gate (an **Edge graduation** experiment) passes.
