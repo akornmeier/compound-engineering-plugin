@@ -96,6 +96,18 @@ if [ "$sub" = "pr" ]; then
     emit_file "$GH_SHIM_DIFF_FILE"
     exit 0
   fi
+  if [ "$pr_sub" = "list" ]; then
+    if [ "$GH_SHIM_CAPTURE_PR_FAIL" = "1" ]; then
+      echo "pr list boom" >&2
+      exit 1
+    fi
+    if [ -n "$GH_SHIM_CAPTURE_PR_FILE" ]; then
+      emit_file "$GH_SHIM_CAPTURE_PR_FILE"
+    else
+      printf '[]'
+    fi
+    exit 0
+  fi
 fi
 
 if [ "$sub" = "api" ]; then
@@ -544,5 +556,119 @@ describe("fetch-pr-data: reference forms", () => {
     expect(exitCode).not.toBe(0)
     expect(stdout.trim()).toBe("")
     expect(stderr).toContain("unrecognized PR reference")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Already-swept probe (capture_pr field in ok envelope)
+// ---------------------------------------------------------------------------
+describe("fetch-pr-data: already-swept probe", () => {
+  test("capture PR exists (open) → envelope carries capture_pr with number and state", async () => {
+    const capturePrFile = path.join(
+      os.tmpdir(),
+      `ls-capture-pr-open-${Date.now()}.json`,
+    )
+    fs.writeFileSync(
+      capturePrFile,
+      JSON.stringify([
+        {
+          number: 55,
+          state: "OPEN",
+          url: "https://github.com/owner/repo/pull/55",
+          headRefName: "learning-capture/pr-42-20260612-abc1",
+        },
+      ]),
+    )
+    try {
+      const { envelope } = await run({
+        env: { GH_SHIM_CAPTURE_PR_FILE: capturePrFile },
+      })
+      expect(envelope.status).toBe("ok")
+      expect(envelope.capture_pr).toBeDefined()
+      expect(envelope.capture_pr.number).toBe(55)
+      expect(envelope.capture_pr.state).toBe("OPEN")
+      expect(envelope.capture_pr.url).toContain("pull/55")
+    } finally {
+      fs.rmSync(capturePrFile, { force: true })
+    }
+  })
+
+  test("closed-unmerged capture PR → probe reports it (durable rejection record)", async () => {
+    const capturePrFile = path.join(
+      os.tmpdir(),
+      `ls-capture-pr-closed-${Date.now()}.json`,
+    )
+    fs.writeFileSync(
+      capturePrFile,
+      JSON.stringify([
+        {
+          number: 60,
+          state: "CLOSED",
+          url: "https://github.com/owner/repo/pull/60",
+          headRefName: "learning-capture/pr-42-20260611-def2",
+        },
+      ]),
+    )
+    try {
+      const { envelope } = await run({
+        env: { GH_SHIM_CAPTURE_PR_FILE: capturePrFile },
+      })
+      expect(envelope.status).toBe("ok")
+      expect(envelope.capture_pr).toBeDefined()
+      expect(envelope.capture_pr.number).toBe(60)
+      expect(envelope.capture_pr.state).toBe("CLOSED")
+    } finally {
+      fs.rmSync(capturePrFile, { force: true })
+    }
+  })
+
+  test("no capture PR found → capture_pr field absent from envelope", async () => {
+    // Default shim returns [] for pr list — no capture PR.
+    const { envelope } = await run()
+    expect(envelope.status).toBe("ok")
+    expect(envelope.capture_pr).toBeUndefined()
+  })
+
+  test("search hit with non-matching head branch → filtered out, capture_pr absent", async () => {
+    // GitHub's --search head: qualifier is a text match, not exact — the probe
+    // re-filters on the actual headRefName prefix for THIS source PR.
+    const capturePrFile = path.join(
+      os.tmpdir(),
+      `ls-capture-pr-mismatch-${Date.now()}.json`,
+    )
+    fs.writeFileSync(
+      capturePrFile,
+      JSON.stringify([
+        {
+          number: 70,
+          state: "OPEN",
+          url: "https://github.com/owner/repo/pull/70",
+          headRefName: "learning-capture/pr-420-20260610-zzz9",
+        },
+      ]),
+    )
+    try {
+      const { envelope } = await run({
+        env: { GH_SHIM_CAPTURE_PR_FILE: capturePrFile },
+      })
+      expect(envelope.status).toBe("ok")
+      expect(envelope.capture_pr).toBeUndefined()
+    } finally {
+      fs.rmSync(capturePrFile, { force: true })
+    }
+  })
+
+  test("probe failure → sweep envelope still ok, capture_pr absent (non-fatal)", async () => {
+    const { envelope, exitCode } = await run({
+      env: { GH_SHIM_CAPTURE_PR_FAIL: "1" },
+    })
+    // Sweep must not fail — probe failure is non-fatal.
+    expect(exitCode).toBe(0)
+    expect(envelope.status).toBe("ok")
+    // capture_pr absent when probe fails.
+    expect(envelope.capture_pr).toBeUndefined()
+    // Main inputs still present.
+    expect(typeof envelope.diff_raw).toBe("string")
+    expect(Array.isArray(envelope.commits_raw)).toBe(true)
   })
 })

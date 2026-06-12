@@ -62,6 +62,14 @@ import subprocess
 import sys
 from typing import NoReturn
 
+# --- Published constants — pinned by tests/learning-sweep-staging.test.ts ----
+
+# Branch prefix for capture PRs — shared with stage-captures.py and the
+# trigger recipe. A probe failure must NOT fail the sweep; the field is
+# advisory for manual runs and a short-circuit for unattended ones.
+CAPTURE_BRANCH_PREFIX = "learning-capture/"
+CAPTURE_LABEL = "learning-capture"
+
 # --- Caps and exclusion policy (named constants per R5) --------------------
 
 # Diff is the primary mining input but the model never needs the raw bytes of a
@@ -408,6 +416,45 @@ def fetch_threads(owner: str, repo: str, number: int):
     return True, nodes, truncated, comments_truncated
 
 
+# --- Already-swept probe ---------------------------------------------------
+
+def probe_capture_pr(owner: str, repo: str, source_pr: int):
+    """Probe for an existing capture PR for the given source PR number.
+
+    Searches for any PR (open/merged/closed) whose head branch starts with the
+    ``learning-capture/pr-<n>-`` prefix and carries the ``learning-capture``
+    label. Returns a dict ``{number, state, url}`` when found, or ``None`` when
+    none exists or when the probe fails.
+
+    A probe failure must NOT fail the sweep — callers must treat ``None`` as
+    "probe inconclusive, proceed normally".
+    """
+    try:
+        ok, payload = gh_json([
+            "pr", "list",
+            "--repo", f"{owner}/{repo}",
+            "--search", f"head:{CAPTURE_BRANCH_PREFIX}pr-{source_pr}-",
+            "--state", "all",
+            "--json", "number,state,url,headRefName",
+            "--limit", "5",
+        ])
+        if not ok or not isinstance(payload, list):
+            return None
+        # GitHub's --search head: qualifier is a text match, not an exact one —
+        # re-filter on the actual head branch prefix for this source PR.
+        expected_prefix = f"{CAPTURE_BRANCH_PREFIX}pr-{source_pr}-"
+        for item in payload:
+            n = item.get("number")
+            s = item.get("state", "").upper()
+            u = item.get("url", "")
+            head = item.get("headRefName", "")
+            if n and s and u and head.startswith(expected_prefix):
+                return {"number": n, "state": s, "url": u}
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # --- Main state machine ----------------------------------------------------
 
 def main(argv) -> None:
@@ -580,7 +627,11 @@ def main(argv) -> None:
     if degraded_inputs:
         flags["degraded_inputs"] = degraded_inputs
 
-    emit({
+    # Already-swept probe: advisory for manual runs; short-circuit trigger for
+    # unattended ones. A probe failure is non-fatal — the field is omitted.
+    capture_pr = probe_capture_pr(owner, repo, number)
+
+    envelope: dict = {
         "status": "ok",
         "pr": number,
         "repo": f"{owner}/{repo}",
@@ -589,7 +640,10 @@ def main(argv) -> None:
         "commits_raw": commits,
         "threads_raw": threads,
         "flags": flags,
-    })
+    }
+    if capture_pr is not None:
+        envelope["capture_pr"] = capture_pr
+    emit(envelope)
 
 
 if __name__ == "__main__":

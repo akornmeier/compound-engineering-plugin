@@ -1,17 +1,35 @@
 ---
 name: ce-learning-sweep
-description: "Sweep one merged PR -- its diff, commit messages, and review threads -- for candidate learnings, then report keepers with a confidence anchor, a three-way corpus verdict, and self-contained capture fuel for hand-routing through /ce-compound. Report-only: writes nothing to the repo. Use to check whether a merged PR carried durable learnings that have not been documented yet, before or instead of capturing them one at a time."
-argument-hint: "[PR number, #N, URL, or owner/repo#N]"
+description: "Sweep one merged PR for candidate learnings: mine diff, commits, and review threads; score each candidate against the docs/solutions/ corpus; present keepers with a confidence anchor and capture fuel; drive a batched keep/reject decision; stage approved keepers as a labeled capture PR via ce-compound in an isolated worktree; merge on green. Use for any merged PR to check and optionally capture durable learnings. Supports mode:headless (stage and wait, no prompts) and mode:autonomous (gate decides, merge on green) for unattended runs."
+argument-hint: "[PR number, #N, URL, or owner/repo#N] [mode:headless | mode:autonomous]"
 allowed-tools: Bash(python3 *fetch-pr-data.py), Bash(python3 *scan-corpus.py), Bash(python3 *stage-captures.py), Bash(python3 *validate-staged-keepers.py), Read, Grep, AskUserQuestion, ToolSearch, Skill
 ---
 
 # Merged-PR Learning Sweep
 
-Sweep ONE merged PR for candidate learnings and report the keepers. This is a **report-only probe**, not a capture skill: it writes nothing to the repo and mutates nothing. Run scratch lives only under `/tmp/compound-engineering/ce-learning-sweep/<run-id>/`.
-
-The sweep **generates** candidate learnings from the PR's diff, commits, and review threads, then **filters** them through a worth-keeping gate and scores each against the existing `docs/solutions/` corpus. Keepers carry capture fuel a later `/ce-compound` run can act on with no other context. `ce-compound` remains the **only writer** and is **authoritative at write time** — the sweep's verdict is advisory routing signal; when `ce-compound`'s own overlap check disagrees during capture, `ce-compound` wins.
+Sweep ONE merged PR for candidate learnings. The sweep **generates** candidates from the PR's diff, commits, and review threads, **filters** them through a worth-keeping gate, scores each against the existing `docs/solutions/` corpus, and (in Phase 7) drives a keep/reject decision and stages approved keepers as a capture PR. `ce-compound` remains the **only writer** and is **authoritative at write time** — the sweep's verdict is advisory; when `ce-compound`'s overlap check disagrees during capture, `ce-compound` wins.
 
 **Replay semantics.** A re-run is a fresh evaluation against the *current* corpus. Verdict drift across runs — e.g. a candidate that verdicted `new` last week now verdicts `already-documented` because it was since captured — is **correct behavior**, not nondeterminism. Do not cache or carry prior-run verdicts.
+
+## Mode Detection
+
+Check `$ARGUMENTS` for a `mode:headless` or `mode:autonomous` token. Tokens starting with `mode:` are flags, not PR references — strip them before treating the remainder as the PR reference. Once detected, the mode applies for the entire run. Default (no token) = interactive.
+
+| Mode | Judgment point | Merge? |
+|------|---------------|--------|
+| **Interactive** (default) | Batched keep/reject menu (Phase 7) | Yes, after menu approval |
+| **Headless** | None — gate-passing keepers auto-approved | No — PR waits for human review |
+| **Autonomous** | None — gate-passing keepers auto-approved | Yes, merge on green |
+
+**Triggered invocations** arrive via routine or GitHub Actions prompts that say so (there is no human session). A triggered run carrying `mode:autonomous` additionally requires `learning_sweep_autonomous: true` in the local config (see Config below). When the key is absent, **downgrade** the run to headless and state the downgrade in the report.
+
+A manual (in-session) `mode:autonomous` does NOT require the config key.
+
+## Config (pre-resolved)
+
+**Local config:** !`cat "$(git rev-parse --show-toplevel 2>/dev/null)/.compound-engineering/config.local.yaml" 2>/dev/null || echo '__NO_CONFIG__'`
+
+If the line above resolved to YAML content (not `__NO_CONFIG__`), check for `learning_sweep_autonomous: true`. This key is required only for the triggered+autonomous pairing. Config resolution happens here, in the main checkout — the staging worktree never reads config.
 
 ## Phase 1: Resolve and validate
 
@@ -125,6 +143,51 @@ Field rules:
 - `capture_fuel`: the keeper's full capture-fuel text verbatim — learning statement, evidence excerpts, and suggested track/category — exactly as rendered in the report. This is the blob `ce-compound mode:headless` consumes; do not summarize or reformat it. Track/category stays a prose hint inside this field, never a separate structured field.
 
 ## Phase 7: Batched keep/reject decision and staging (only when the report has keepers)
+
+### Already-swept short-circuit (headless and autonomous only)
+
+When the mode is `mode:headless` or `mode:autonomous` (including a triggered run):
+
+Check the Phase 1 fetch envelope's `capture_pr` field. When `capture_pr` is present (any state — open, merged, or closed-unmerged; a closed capture PR is a durable rejection record), end immediately:
+
+`status: skipped — already swept (capture PR #<n>)`
+
+Manual (interactive) runs proceed regardless — fresh evaluation; replay semantics apply.
+
+### Gate-decision table (headless and autonomous)
+
+For headless and autonomous runs, the full gate-decision table — every keeper and near-miss with its anchor and keep/reject/near-miss outcome — **must go into the PR body** under a "Gate decisions" section appended to the provenance body from `references/staging-workflow.md`. `/tmp` and routine terminal output die with the container; the PR body is the only durable record.
+
+Side-effect recommendations from `ce-compound` (instruction-file Discoverability edits, CONCEPTS.md writes) are carried into the PR body's "Recommended follow-ups" section — never staged. See `references/staging-workflow.md`.
+
+### Headless flow (mode:headless)
+
+No prompts anywhere. Proceed directly:
+
+1. Auto-approve all gate-passing keepers (anchor >= 75) whose verdict is not `already-documented`. Write them to `approved-keepers.json` in run scratch.
+2. When the approved set is empty: `status: swept — nothing staged`
+3. Skip the batched menu. Skip the parallel-PR confirmation (the already-swept short-circuit above covers duplication for unattended runs).
+4. Drive the staging flow (open → ce-compound dispatches → finalize) per `references/staging-workflow.md`.
+5. After `finalize` succeeds (`pr_open`): run `stage-captures.py teardown` (worktree removed; branch + PR remain).
+6. Terminal line: `status: staged — <K> keeper(s) awaiting review (PR #<pr_number>)`
+
+Do NOT run `stage-captures.py merge` in headless mode. The PR waits for human review.
+
+### Autonomous flow (mode:autonomous)
+
+Same staging as headless, then the merge path:
+
+1. Auto-approve gate-passing keepers. Write `approved-keepers.json`.
+2. When the approved set is empty: `status: swept — nothing staged`
+3. Drive staging (open → ce-compound dispatches → finalize).
+4. Run `stage-captures.py merge` — branch on the JSON `status`:
+   - `merged` → `status: captured — <K> entr(y/ies) merged (PR #<pr_number>)`
+   - `awaiting_attention` → `status: staged — awaiting attention (PR #<pr_number>)` — never auto-close
+   - `validation_failed` → `status: staging failed — <detail>`
+
+On red checks or watch timeout, the comment is already posted by `stage-captures.py`; end with the `awaiting_attention` terminal line.
+
+**Triggered run downgrade:** When the run is triggered AND `learning_sweep_autonomous: true` is absent from the local config, downgrade to headless. State the downgrade in the report body AND use the headless terminal line (`status: staged — <K> keeper(s) awaiting review`).
 
 ### Batched keep/reject decision
 

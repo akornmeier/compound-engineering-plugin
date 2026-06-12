@@ -862,3 +862,75 @@ describe("ce-learning-sweep SKILL.md: Phase 7 static contracts", () => {
     expect(skillContent).toContain("validate-staged-keepers.py")
   })
 })
+
+// ---------------------------------------------------------------------------
+// U4 static contracts (SKILL.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Static pins for the unattended-modes additions (U4). These assert the
+ * mode-parsing text, config-key reference, downgrade rule, and terminal lines
+ * are present verbatim so drift fails CI.
+ */
+describe("ce-learning-sweep SKILL.md: U4 mode and unattended contracts", () => {
+  let skillContent: string
+
+  beforeAll(() => {
+    skillContent = fs.readFileSync(LEARNING_SWEEP_SKILL, "utf8")
+  })
+
+  test('mode:headless token is named in mode-parsing section', () => {
+    expect(skillContent).toContain("mode:headless")
+  })
+
+  test('mode:autonomous token is named in mode-parsing section', () => {
+    expect(skillContent).toContain("mode:autonomous")
+  })
+
+  test('learning_sweep_autonomous config key is referenced', () => {
+    expect(skillContent).toContain("learning_sweep_autonomous")
+  })
+
+  test('downgrade-to-headless rule is present (missing config key → headless)', () => {
+    expect(skillContent).toContain("downgrade")
+  })
+
+  test('already-swept terminal line is present verbatim', () => {
+    expect(skillContent).toContain("status: skipped — already swept")
+  })
+
+  test('headless waiting terminal line is present verbatim', () => {
+    expect(skillContent).toContain("status: staged —")
+  })
+
+  test('gate-decision-table-in-PR-body instruction is present', () => {
+    // The gate-decision table must go into the PR body for unattended runs —
+    // /tmp dies with the container.
+    expect(skillContent).toContain("Gate decisions")
+  })
+
+  test('triggered run concept is described (routine/Action context)', () => {
+    expect(skillContent).toContain("triggered")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// U4 pinned-constant consumer: fetch-pr-data.py
+// ---------------------------------------------------------------------------
+
+describe("fetch-pr-data.py: pinned constants", () => {
+  const FETCH_SCRIPT = path.join(
+    __dirname,
+    "../plugins/compound-engineering/skills/ce-learning-sweep/scripts/fetch-pr-data.py",
+  )
+
+  test('fetch-pr-data.py contains label constant "learning-capture"', () => {
+    const content = fs.readFileSync(FETCH_SCRIPT, "utf8")
+    expect(content).toContain("learning-capture")
+  })
+
+  test('fetch-pr-data.py contains branch-prefix constant "learning-capture/"', () => {
+    const content = fs.readFileSync(FETCH_SCRIPT, "utf8")
+    expect(content).toContain("learning-capture/")
+  })
+})
