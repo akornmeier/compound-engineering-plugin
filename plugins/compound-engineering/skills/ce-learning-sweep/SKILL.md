@@ -86,16 +86,43 @@ Apply the worth-keeping gate per `references/worth-keeping-rubric.md`. Each cand
 
 **The keep bar is anchor >= 75.** Its test: the candidate names the **concrete downstream consequence** of not knowing the learning — what future work breaks, is redone, or is done wrong without it. A candidate that only restates what the PR did, or expresses an opinion about code quality, does not clear 75.
 
-- **anchor >= 75** -> **keeper**: full entry in the report with capture fuel and verdict-conditional routing.
+- **anchor >= 75** -> **keeper**: full entry in the report with capture fuel and verdict-conditional routing. Assign a stable per-run `keeper_id` in report order: `k1`, `k2`, `k3`, etc.
 - **anchor 50** -> **near-miss**: one line in the near-miss section (real but minor/nitpick-grade).
 - **below 50** -> **counted only**: contributes to the discard count line, never listed.
 
-## Phase 6: Report
+## Phase 6: Report and keeper envelope
 
-Render the report per `references/report-template.md`. The report carries the header (PR, repo, run-id, input disclosures), one entry per keeper (anchor, verdict, evidence pointers, capture fuel, verdict-conditional routing block), the near-miss section, the discard count line, and ends with the **terminal status line** fixed in the template. Use:
+Render the report per `references/report-template.md`. The report carries the header (PR, repo, run-id, input disclosures), one entry per keeper (keeper_id, anchor, verdict, evidence pointers, capture fuel, verdict-conditional routing block), the near-miss section, the discard count line, and ends with the **terminal status line** fixed in the template. Use:
 - the candidates terminal line when the report has any candidates,
 - the clean no-candidates line when the sweep yielded nothing (AE5),
 - the skipped terminal line when Phase 1 short-circuited.
+
+**After rendering the report**, write `keepers.json` to the run's scratch directory. Skip this step when there are no keepers (anchor < 75 for every candidate). The file path is:
+
+```
+/tmp/compound-engineering/ce-learning-sweep/<run-id>/keepers.json
+```
+
+The file is a JSON array — one object per keeper, in keeper_id order:
+
+```json
+[
+  {
+    "keeper_id": "k1",
+    "anchor": 75,
+    "verdict": "new",
+    "overlapping_doc": null,
+    "capture_fuel": "Learning: ...\nEvidence excerpts:\n  > ...\nSuggested track/category: ..."
+  }
+]
+```
+
+Field rules:
+- `keeper_id`: stable per-run label assigned in report order (`k1`, `k2`, ...).
+- `anchor`: integer, 75 or 100.
+- `verdict`: one of `new`, `overlaps-existing`, `already-documented`.
+- `overlapping_doc`: string path to the overlapping doc when verdict is `overlaps-existing` or `already-documented`; `null` otherwise.
+- `capture_fuel`: the keeper's full capture-fuel text verbatim — learning statement, evidence excerpts, and suggested track/category — exactly as rendered in the report. This is the blob `ce-compound mode:headless` consumes; do not summarize or reformat it. Track/category stays a prose hint inside this field, never a separate structured field.
 
 ## Phase 7: Post-report routing (only when the report has keepers)
 
