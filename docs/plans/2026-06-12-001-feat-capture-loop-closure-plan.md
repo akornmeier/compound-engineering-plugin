@@ -1,7 +1,7 @@
 ---
 title: "feat: Close the capture loop and drift read edge"
 type: feat
-status: active
+status: completed
 date: 2026-06-12
 deepened: 2026-06-12
 origin: docs/brainstorms/2026-06-12-loop-system-capture-closure-requirements.md
