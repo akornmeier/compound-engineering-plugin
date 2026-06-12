@@ -783,6 +783,13 @@ describe("stage-captures: pinned constants across consumers", () => {
       label: "SKILL.md (ce-learning-sweep)",
       filePath: LEARNING_SWEEP_SKILL,
     },
+    {
+      label: "trigger-recipe.md",
+      filePath: path.join(
+        __dirname,
+        "../plugins/compound-engineering/skills/ce-learning-sweep/references/trigger-recipe.md",
+      ),
+    },
   ]
 
   for (const { label, filePath } of consumerFiles) {

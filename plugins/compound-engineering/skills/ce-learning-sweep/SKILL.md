@@ -21,7 +21,7 @@ Check `$ARGUMENTS` for a `mode:headless` or `mode:autonomous` token. Tokens star
 | **Headless** | None — gate-passing keepers auto-approved | No — PR waits for human review |
 | **Autonomous** | None — gate-passing keepers auto-approved | Yes, merge on green |
 
-**Triggered invocations** arrive via routine or GitHub Actions prompts that say so (there is no human session). A triggered run carrying `mode:autonomous` additionally requires `learning_sweep_autonomous: true` in the local config (see Config below). When the key is absent, **downgrade** the run to headless and state the downgrade in the report.
+**Triggered invocations** arrive via routine or GitHub Actions prompts that say so (there is no human session). A triggered run carrying `mode:autonomous` additionally requires `learning_sweep_autonomous: true` in the local config (see Config below). When the key is absent, **downgrade** the run to headless and state the downgrade in the report. To set up merge-triggered sweeps, see `references/trigger-recipe.md`.
 
 A manual (in-session) `mode:autonomous` does NOT require the config key.
 
