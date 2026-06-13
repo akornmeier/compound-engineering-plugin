@@ -12,6 +12,8 @@ related:
   - docs/plans/2026-06-08-001-feat-drift-capture-loop-plan.md
   - docs/plans/2026-06-09-001-feat-ce-learning-sweep-mvp-plan.md
   - docs/plans/2026-06-12-001-feat-capture-loop-closure-plan.md
+  - docs/plans/2026-06-13-001-feat-ce-compound-refresh-corpus-audit-workflow-plan.md
+  - docs/plans/2026-06-13-002-feat-concepts-rebuild-workflow-plan.md
   - docs/adr/0001-per-metric-signal-gate.md
   - CONTEXT.md
 ---
@@ -30,7 +32,7 @@ It is organized around the **compounding memory loop** as its spine — **Captur
 2. **Sequencing is three per-metric tracks, not one queue.** A 2026-06-07 grilling pass found the original single linear queue was the structural cause of a "march on asserted pain." Work is now **Track A — Rework/churn** (the only one with a hard **Signal gate**, fed by a drift-rate **probe**), **Track B — Learnings reuse** (qualitative; Retrieve carries a **timing trigger**), and **Track C — Loop adoption** (qualitative). The three senses of "gate" (Candidacy / Signal / Timing) are defined in [CONTEXT.md](../CONTEXT.md). §6 has the tracks.
 3. **The baseline is headless/agent mode, not interactive mode.** Several candidates (`ce-compound`, `ce-compound-refresh`, `ce-code-review`, `ce-doc-review`) already fan out non-interactively and stage intermediate output to disk. A conversion's value is the **marginal gain over that existing baseline**, not over interactive mode. Rows assess the increment, not the absolute.
 
-**Status (refreshed 2026-06-13):** Since the 2026-06-07 revision, three pieces landed beyond Phase 0. **Track A0 — `work-vs-plan verification` shipped as `ce-verify-work`** (the drift probe). The **drift->capture loop** now persists durable drift events to `docs/drift-events/`. The **read edge `ce-drift-report`** aggregates those events at read time. Separately, the capture bottleneck (Track B0) is largely covered by the new **`ce-learning-sweep`** skill (per-PR sweep -> batched keep/reject -> capture-PR), a different design than B0's original `ce-compound` N-fan-out sketch. **The next action is now the Track A Signal gate decision** (§6): pre-commit threshold `T`, read the aggregate drift via `ce-drift-report`, then authorize (drift >= T) or halt (drift < T) the A1+ conversions. A1+, Track B1 (corpus-audit), and all of Track C remain unstarted; B2 (Retrieve) stays timing-deferred.
+**Status (refreshed 2026-06-13):** Since the 2026-06-07 revision, three pieces landed beyond Phase 0. **Track A0 — `work-vs-plan verification` shipped as `ce-verify-work`** (the drift probe). The **drift->capture loop** now persists durable drift events to `docs/drift-events/`. The **read edge `ce-drift-report`** aggregates those events at read time. Separately, the capture bottleneck (Track B0) is largely covered by the new **`ce-learning-sweep`** skill (per-PR sweep -> batched keep/reject -> capture-PR), a different design than B0's original `ce-compound` N-fan-out sketch. **The next action is now the Track A Signal gate decision** (§6): pre-commit threshold `T`, read the aggregate drift via `ce-drift-report`, then authorize (drift >= T) or halt (drift < T) the A1+ conversions. A1+ remains unstarted. **Track B1 (corpus-audit) and Track C0 (CONCEPTS.md rebuild) are now planned** (`docs/plans/2026-06-13-001-feat-ce-compound-refresh-corpus-audit-workflow-plan.md`, `docs/plans/2026-06-13-002-feat-concepts-rebuild-workflow-plan.md`) but not yet implemented; the rest of Track C (C1, C2) remains unstarted; B2 (Retrieve) stays timing-deferred.
 
 **Scope note:** This document records downstream conversion-time questions; it does not resolve them. The conversions themselves are out of scope here — they are downstream `/ce-plan` + execution work.
 
@@ -162,6 +164,7 @@ Row schema: **Loop phase | Skill (path) | Pattern(s) | Criteria assessment (R2, 
 - **HARD SAFETY INVARIANT (verbatim, `ce-compound-refresh/SKILL.md:25`):** "If classification is genuinely ambiguous (Update vs Replace vs Consolidate vs Delete) or Replace evidence is insufficient, mark as stale with `status: stale`, `stale_reason`, and `stale_date` in the frontmatter... Err toward stale-marking over incorrect action." Because a workflow takes no mid-run input, it **forfeits the interactive ambiguity gate** and must adopt this existing headless rule as a hard invariant: **mark ambiguous entries stale, never destructively archive/replace/merge on ambiguity.**
 - **Impact:** Medium-High — keeps the store trustworthy as it grows; serves **Learnings reuse** (stale/contradictory learnings poison retrieval).
 - **Conversion mode:** wholesale headless workflow, but bounded by the stale-marking invariant. The safe-automation boundary (how much runs unattended) is a recorded open question (§8).
+- **Status (2026-06-13):** Planned — `docs/plans/2026-06-13-001-feat-ce-compound-refresh-corpus-audit-workflow-plan.md`. Follows the landed `code-review-fanout` template (pure module + build script + generated artifact + freshness test + verbatim prose fallback); classifiers return frontmatter cluster keys, contradiction agents Read cluster paths (no content to the script), and a mandatory N≥3 live smoke gates the live-boundary contracts. Not yet implemented.
 
 ### 5.4 Understand
 
@@ -171,6 +174,7 @@ Row schema: **Loop phase | Skill (path) | Pattern(s) | Criteria assessment (R2, 
 - **Criteria (R2):** *Gate:* passes — net-new non-interactive batch, no conversational half. *Baseline:* **purely manual/incremental today** — CONCEPTS.md accretes reactively as learnings are processed; there is no automated rebuild. *Marginal gain:* the **entire value is the increment** (manual -> scheduled comprehensive rebuild), unlike candidates with an existing headless baseline. *Fan-out:* ~7 subsystems (agents/, skills/, schemas, instruction files, metadata, core docs, fixtures). *Structured output:* clustered markdown glossary with defined entry format. *Rigor upside:* completeness-critic pass catches core nouns that friction-driven accretion never surfaces.
 - **Impact:** Medium — improves agent navigability; serves **Loop adoption** indirectly (a current map lowers the cost of running the chain). Lower frequency than Capture/Retrieve.
 - **Conversion mode:** wholesale net-new; no interactive boundary to carve. Writes through the same durable-write seam the maintenance skills use (R14).
+- **Status (2026-06-13):** Planned — `docs/plans/2026-06-13-002-feat-concepts-rebuild-workflow-plan.md`. Lands by **extending `ce-compound-refresh`'s repo-wide CONCEPTS.md bootstrap path** (no new skill); fan-out over ~7 subsystems -> deterministic synthesis module -> completeness-critic, with a no-silent-removal diff and a mandatory N≥3 live smoke. Not yet implemented.
 
 ### 5.5 Review / optimization branch
 
@@ -268,14 +272,14 @@ No Signal gate — proceeds on qualitative judgment. STRATEGY names a session-hi
 | Order | Candidate | Role | Trigger |
 |---|---|---|---|
 | B0 | **batch-learning-capture** | **Largely landed** via `ce-learning-sweep` (per-PR sweep -> batched keep/reject -> capture-PR through `ce-compound mode:headless`, opt-in `mode:autonomous`) — a different design than this row's `ce-compound` N-fan-out sketch, attacking the same capture bottleneck. | — |
-| B1 | corpus-audit (Maintain) | Headless baseline + stale-marking safety invariant already specified; corpus-wide loop-until-dry is the increment. **Emits the `docs/solutions/` file count** that feeds B2's trigger. | — |
+| B1 | corpus-audit (Maintain) | **Planned** — [plan](plans/2026-06-13-001-feat-ce-compound-refresh-corpus-audit-workflow-plan.md). Headless baseline + stale-marking safety invariant already specified; corpus-wide loop-until-dry is the increment. **Emits the `docs/solutions/` file count** that feeds B2's trigger. | — |
 | B2 | **high-recall Retrieve (R9)** | Highest *leverage* of any candidate (every consumer skill reads this seam) but **timing-triggered**. | **Timing trigger:** store-size >= 150 files (≈5× today's 31), read from B1's emitted count; or first observed recall complaint. |
 
 ### Track C — Loop adoption (qualitative)
 
 | Order | Candidate | Role |
 |---|---|---|
-| C0 | CONCEPTS.md refresh | Net-new; manual baseline -> full marginal value; lower frequency. |
+| C0 | CONCEPTS.md refresh | **Planned** — [plan](plans/2026-06-13-002-feat-concepts-rebuild-workflow-plan.md). Net-new; manual baseline -> full marginal value; lower frequency. Lands by extending `ce-compound-refresh` (no new skill). |
 | C1 | ce-ideate evaluate sub-step | Parallelize the currently-sequential Phase 3 evaluate; clean seam at Phase 6. |
 | C2 | tournament plan drafter | Speculative; high rigor upside, lower confidence. |
 
