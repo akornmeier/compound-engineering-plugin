@@ -1,6 +1,7 @@
 ---
 title: New skills and agents must use the ce- prefix; enforce it in tests, not just prose
 date: 2026-05-01
+last_updated: 2026-06-13
 category: skill-design
 module: compound-engineering
 problem_type: convention
@@ -10,12 +11,16 @@ applies_when:
   - Adding a new skill directory under plugins/compound-engineering/skills/
   - Adding a new agent file under plugins/compound-engineering/agents/
   - Authoring or reviewing a PR that introduces a new component to the plugin
+  - Merging a long-lived branch that forked many commits before the current HEAD
 tags:
   - naming-convention
   - ce-prefix
   - skill-authoring
   - test-enforcement
   - plugin-conventions
+  - file-extension
+  - validator-blindness
+  - stale-branch
 related:
   - docs/solutions/skill-design/beta-skills-framework.md
 related_pr: https://github.com/EveryInc/compound-engineering-plugin/pull/747
@@ -76,6 +81,56 @@ Updated `plugins/compound-engineering/AGENTS.md` to call the prefix mandatory, n
 
 Saved a feedback memory in the agent's per-project memory store so future sessions on this repo load the rule automatically and apply it before the test fires. (The exact memory path is machine- and user-specific; the durable point is that the rule lives in author memory as well as in prose and tests.)
 
+## The filename-format dimension: extension regressions slip past counts
+
+The same "unenforced convention regresses" failure has a second face: the agent
+filename *extension*. PR #846 migrated every agent off the `.agent.md` double
+extension to plain `<name>.md` because `.agent.md` breaks VS Code Copilot tool
+access. Like the prefix, that migration left no enforcing check — and the
+checks that *look* like they cover agent files do not:
+
+- **The prefix test above is blind to it.** The agent loop filters with
+  `entry.name.endsWith(".md")` (see the snippet in section 1). A `.agent.md`
+  file ends in `.md` *and* carries the `ce-` prefix, so it passes both the
+  filter and the prefix assertion.
+- **`release:validate` is blind to it.** It counts agents by matching any
+  `*.md` file, so a `.agent.md` file is counted as a healthy agent. A count or
+  parity validator answers "how many components?" — it is structurally blind to
+  "what format is each one in?"
+
+In PR #24 the `feat/at-team-extracted-agents` branch — forked **199 commits
+before** the migration — reintroduced two `.agent.md` agents. `release:validate`
+reported `45 agents, in sync` and the prefix test passed; the regression merged
+green onto the feature branch and was caught only because a human read the diff
+before the final merge.
+
+Two lessons fold back into this convention:
+
+1. **Enforce the filename *format*, not just prefix-and-existence.** Extend the
+   agent loop in `tests/skill-agent-ce-prefix.test.ts` to assert each agent
+   filename matches exactly `^ce-[a-z0-9-]+\.md$` (no intervening `.agent`
+   segment), so a `.agent.md` file fails loudly instead of passing the
+   `endsWith(".md")` filter:
+
+   ```ts
+   for (const fileName of agentFiles) {
+     expect(
+       /^ce-[a-z0-9-]+\.md$/.test(fileName),
+       `Agent filename "${fileName}" must be exactly ce-<name>.md — no `
+         + `.agent segment (see PR #846; .agent.md breaks VS Code Copilot `
+         + `tool access).`,
+     ).toBe(true)
+   }
+   ```
+
+2. **Re-audit a long-stale branch against conventions that changed *after* its
+   fork point.** A mostly-additive diff can satisfy every count and still
+   reintroduce a since-removed convention (an extension, a directory layout, a
+   frontmatter shape). Before merging a branch with a far-back fork point,
+   confirm it matches the *current* form of conventions migrated between the
+   fork point and HEAD — counts and "release:validate in sync" will not tell
+   you.
+
 ## Prevention
 
 For any plugin convention that is currently prose-only, ask:
@@ -94,4 +149,6 @@ The allowlist pattern is preferred when migration is risky (renaming an installe
 
 - `plugins/compound-engineering/AGENTS.md` — Naming Convention section now documents the rule and the allowlist.
 - `tests/skill-agent-ce-prefix.test.ts` — the dedicated test that implements the enforcement (a parallel copy also lives in `tests/frontmatter.test.ts`).
-- PR #747 — the original mistake and the rename + enforcement that came with it.
+- PR #747 — the original prefix mistake and the rename + enforcement that came with it.
+- PR #846 — the `.agent.md` -> `.md` extension migration (VS Code Copilot tool access).
+- PR #24 — a 199-commit-stale branch reintroduced `.agent.md`; caught by human review, motivating the filename-format dimension above.
