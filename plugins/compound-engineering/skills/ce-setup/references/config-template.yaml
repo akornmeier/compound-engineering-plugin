@@ -29,3 +29,28 @@
 # pulse_metric_sources: "retention_d7=posthog,nps=delighted"  # strategy-metric -> source overrides; comma-separated 'metric=source' pairs; unlisted metrics fall back to pulse_analytics_source
 # pulse_pending_metrics: "retention_d7,nps"             # comma-separated strategy metrics awaiting instrumentation; render as 'no data'
 # pulse_excluded_metrics: "north_star"                  # comma-separated strategy metrics intentionally not in pulse
+
+# --- Learning sweep ---
+
+# learning_sweep_autonomous: true  # true | (absent) (default: absent -- headless on triggered runs)
+#   Enables autonomous merge on triggered ce-learning-sweep runs. Required for
+#   the triggered+autonomous pairing: a triggered run carrying mode:autonomous
+#   without this key is downgraded to headless (stages and waits). A manual
+#   in-session mode:autonomous does not require this key.
+
+# --- Output format ---
+# Per-skill output format default. Selects the exclusive format the artifact
+# is written in: `md` produces a markdown file, `html` produces a single
+# self-contained HTML file. The two are mutually exclusive -- there is no
+# sibling artifact. See DESIGN.md or your agent instructions to influence
+# HTML styling. CLI arguments override these defaults; pipeline contexts
+# (e.g., LFG, disable-model-invocation) always force `md` regardless.
+
+# plan_output: html              # md | html (default: md)
+# brainstorm_output: html        # md | html (default: md)
+
+# --- ce-promote ---
+# Written automatically when you decline the Spiral setup offer in /ce-promote.
+# Suppresses that one-time setup nudge in this project. Remove the key to re-enable.
+
+# ce_promote_spiral_optout: true   # true | (absent) (default: absent -- offer once)

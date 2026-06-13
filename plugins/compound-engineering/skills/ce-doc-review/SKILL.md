@@ -45,9 +45,28 @@ If `mode:headless` is not present, the skill runs in its default interactive mod
 
 ### Classify Document Type
 
-After reading, classify the document:
-- **requirements** -- from `docs/brainstorms/`, focuses on what to build and why
-- **plan** -- from `docs/plans/`, focuses on how to build it with implementation details
+Classify the document by reading its **content shape**, not its file path. Path is a tie-breaker hint, not the primary signal — a brainstorm-style doc placed under `docs/plans/` should still classify as `requirements`, and a plan-shaped doc under `docs/brainstorms/` should still classify as `plan`. The reviewers below operate differently depending on this classification, so misclassifying a plan-shaped doc as a requirements doc (or vice versa) produces noisy or under-scrutinized findings.
+
+Use these signals to decide:
+
+**`requirements` signals (what-to-build documents):**
+- Frontmatter fields like `actors:`, `flows:`, `acceptance_examples:`, or `status:` carrying brainstorm-shaped values
+- Section headings such as `Acceptance Examples`, `Actors`, `Key Flows`, `User Flows`, `Outstanding Questions`, `Resolve Before Planning`
+- Numbered identifiers in the form `R1`, `R2`, `A1`, `F1`, `AE1` — requirement, actor, flow, and acceptance-example IDs
+- Prose framing focused on user/business problem, behavior, scope boundaries, success criteria
+- No implementation units, no per-unit file lists, no test scenarios attached to units
+
+**`plan` signals (how-to-build documents):**
+- Frontmatter fields like `type: feat|fix|refactor`, `origin: docs/brainstorms/...`
+- Section headings such as `Implementation Units`, `Output Structure`, `Key Technical Decisions`, `Risks & Dependencies`, `System-Wide Impact`
+- Numbered identifiers in the form `U1`, `U2` — implementation unit IDs
+- Per-unit fields named `Goal`, `Files`, `Approach`, `Test scenarios`, `Verification`
+- Repo-relative file paths to create/modify/test
+- Prose framing focused on technical decisions, sequencing, and implementer-facing detail
+
+**Tie-breaker rule.** When the content signals are mixed or sparse, fall back to path: `docs/brainstorms/` → `requirements`, `docs/plans/` → `plan`. When neither path location applies, treat the dominant content shape as authoritative; if shape is genuinely ambiguous, default to `requirements` (the more conservative classification — it activates fewer plan-specific feasibility checks).
+
+Pass the classification result to each persona via the `{document_type}` slot in the subagent template. Personas read this and adapt their analysis accordingly.
 
 ### Select Conditional Personas
 
@@ -86,11 +105,16 @@ Analyze the document content to determine which conditional personas to activate
 - Scope boundary language that seems misaligned with stated goals
 - Goals that don't clearly connect to requirements
 
-**adversarial** -- activate when the document contains:
-- More than 5 distinct requirements or implementation units
-- Explicit architectural or scope decisions with stated rationale
-- High-stakes domains (auth, payments, data migrations, external integrations)
-- Proposals of new abstractions, frameworks, or significant architectural patterns
+**adversarial** -- activate when the document contains a high-value challenge surface, not merely structural complexity. Routine plans with stated rationale are not by themselves an adversarial signal — premise/assumption work re-litigates settled questions when the only signal is "this plan is well-structured." Activate when ANY of the following holds:
+
+- The document is a **requirements document** with 2+ challengeable claims (problem framing, solution selection, prioritization, predicted outcomes) -- premise scrutiny is core to the brainstorm phase
+- The document touches a **high-stakes domain** -- auth, payments, billing, data migrations, privacy/compliance, external integrations, cryptography -- regardless of doc type or size
+- The document **proposes a new abstraction, framework, or significant architectural pattern** -- regardless of doc type
+- The document is a **plan with no `origin:` requirements doc** (greenfield bootstrap) -- premise wasn't validated upstream
+- The document is a **plan that explicitly extends scope** beyond its origin requirements doc (new actors, new flows, deferred-then-restored features)
+- The document contains an **explicit alternatives section** or unresolved tradeoffs -- adversarial helps stress-test the chosen direction
+
+Do NOT activate adversarial on a routine plan document that derives from a validated origin requirements doc, stays within scope, and does not introduce high-stakes domains or new abstractions. The plan's structural decisions (more units, more rationale) are not by themselves adversarial signal -- those are the plan doing its job.
 
 ## Phase 2: Announce and Dispatch Personas
 
@@ -119,6 +143,41 @@ Add activated conditional personas:
 - `ce-scope-guardian-reviewer`
 - `ce-adversarial-document-reviewer`
 
+### Workflow acceleration (`mode:headless` only)
+
+In `mode:headless`, when the **Workflow tool is available** (Claude Code), run the persona fan-out + synthesis as a dynamic workflow instead of dispatching reviewers inline — the persona returns and the whole synthesis working memory stay in the workflow runtime, so only the final envelope enters this orchestrator's context (and the context of any caller — `ce-plan` Phase 5.3.8, `ce-brainstorm` Phase 4). This is also the **cross-platform guard**: on targets without the Workflow tool (Codex, Gemini, etc.) the fallback below is the unchanged, fully-functional review, so a converted skill never emits orchestration the target cannot run. **Default/interactive mode never uses this path** — it always runs the prose dispatch below and the interactive Phases 3-5.
+
+1. Read `workflows/doc-review-fanout.generated.js` (co-located; resolved relative to this skill).
+2. **Validate the input contract (ADR 0002), then mint the run id.** This is the *primary* validation tier — the orchestrator alone can touch the filesystem and holds Phase 1's context, so it fails fast here instead of spinning up a workflow for a known-bad call (the workflow re-checks the same invariants structurally as defense-in-depth). Before invoking, confirm:
+   - **`document_path`** resolves to an **absolute** path that exists and is readable (Phase 1 already read it — resolve it to absolute now). The workflow Reads this path from its own runtime, so a relative path is not safe across the boundary.
+   - **`document_type`** was classified by Phase 1 to `requirements` or `plan`.
+   - the **persona list** (Build Agent List above) is non-empty.
+
+   On any failure, **do not invoke the workflow** and **do not** fall back to the prose path — a contract violation is a caller bug, not a platform gap. Report the specific error and stop. Otherwise mint the run id and artifact dir:
+   ```bash
+   RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ')
+   mkdir -p "/tmp/compound-engineering/ce-doc-review/$RUN_ID"
+   ```
+3. Invoke the Workflow tool with `script` set to that file's contents and `args`. Every field except `origin_path` is **required** — a missing or malformed one makes the workflow return `status: "invalid_input"` instead of a review:
+   - `run_id` — from step 2 (a path-safe `[A-Za-z0-9_-]+` token); `document_path` — the **absolute** path confirmed in step 2; `document_type` — `requirements` or `plan` from Phase 1 classification; `origin_path` — the document's `origin:` frontmatter value, or `none` (the one defaultable field, extracted in Phase 1).
+   - `personas` — the resolved reviewer list (Build Agent List above) as `{ name, agentType, model }`, where `name` is the short persona name, `agentType` is the **plugin-namespaced** `compound-engineering:ce-<name>-reviewer` — the workflow `agent()` registry does **not** resolve the bare `ce-<name>` form, and a bad type is swallowed into an empty review — and `model` matches the persona's declared tier (omit `model` for `inherit` personas so they inherit the session model):
+
+     | name | agentType | model |
+     |------|-----------|-------|
+     | `coherence` | `compound-engineering:ce-coherence-reviewer` | `haiku` |
+     | `feasibility` | `compound-engineering:ce-feasibility-reviewer` | _(omit — inherit)_ |
+     | `product-lens` | `compound-engineering:ce-product-lens-reviewer` | _(omit — inherit)_ |
+     | `design-lens` | `compound-engineering:ce-design-lens-reviewer` | `sonnet` |
+     | `security-lens` | `compound-engineering:ce-security-lens-reviewer` | `sonnet` |
+     | `scope-guardian` | `compound-engineering:ce-scope-guardian-reviewer` | `sonnet` |
+     | `adversarial` | `compound-engineering:ce-adversarial-document-reviewer` | _(omit — inherit)_ |
+
+4. The workflow returns the `mode:headless` envelope — it has already run the fan-out, the synthesis agent (the `3.3b-3.6` judgment middle), and the deterministic merge. It is **report-only**: it never mutates the document. The envelope carries `fixes_to_apply` (anchor-`100` `safe_auto`), `proposed_fixes`, `decisions` (each with `depends_on`/`dependents`), `fyi`, `residual_risks`, `deferred_questions`, `coverage` (`dropped`/`restated`/`chains`/`dropped_agents`/`malformed_agents`), `reviewers`, `run_id`, `artifact_path`, and `status`.
+5. **Apply** the returned `fixes_to_apply` to the document with the platform's edit tool — these are the anchor-`100` `safe_auto` fixes (the sole application step; the workflow never applies). Then **render** the Phase 4 headless text envelope (see `references/synthesis-and-presentation.md` — "Headless mode") from the returned data: list applied fixes, then Proposed fixes, Decisions (nesting each root's `dependents` as an indented sub-block, never re-listed at their own position), FYI observations, Residual concerns, Deferred questions, and the `Dropped:` / `Chains:` / `Restated:` Coverage footnotes when non-zero. End with `Review complete`. Honor the **protected-artifact** rule and the user-facing vocabulary rule.
+6. Do **not** re-run the Phase 3-5 synthesis on the envelope, do **not** fire any interactive question, and do **not** run R29/R30 (the workflow is single-round with an empty primer). If `status` is `invalid_input`, the staged `args` were malformed — surface the returned `error` and stop; do **not** render a report (this indicates the step 2 validation was skipped or wrong, since it should have caught the violation first). If `status` is `degraded`, surface the failed/malformed reviewers in Coverage but still render what returned.
+
+When the Workflow tool is unavailable, ignore this subsection and run the prose dispatch below.
+
 ### Dispatch
 
 Dispatch agents using **bounded parallelism** with the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex, `subagent` in Pi via the `pi-subagents` extension). Omit the `mode` parameter so the user's configured permission settings apply. Respect the current harness's active-subagent limit: queue selected reviewers, dispatch only as many as the harness accepts, and fill freed slots as reviewers complete. Treat active-agent/thread/concurrency-limit spawn errors as backpressure, not reviewer failure: leave the reviewer queued and retry after a slot frees. Record a reviewer as failed only after a successful dispatch times out/fails, or when dispatch fails for a non-capacity reason.
@@ -131,6 +190,7 @@ Each agent receives the prompt built from the subagent template included below w
 | `{schema}` | Content of the findings schema included below |
 | `{document_type}` | "requirements" or "plan" from Phase 1 classification |
 | `{document_path}` | Path to the document |
+| `{origin_path}` | Value of the document's `origin:` frontmatter field if present, or the literal string `none` if absent. Personas that adapt on origin (product-lens, adversarial, scope-guardian) read this slot to gate technique suppression — they do NOT re-parse frontmatter themselves. Extract this once during Phase 1 reading. |
 | `{document_content}` | Full text of the document |
 | `{decision_primer}` | Cumulative prior-round decisions in the current session, or an empty `<prior-decisions>` block on round 1. See "Decision primer" below. |
 

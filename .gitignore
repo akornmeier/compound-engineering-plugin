@@ -10,3 +10,7 @@ __pycache__/
 *.pyc
 
 .compound-engineering/*.local.yaml
+
+# Session/hook scratch that tooling writes into the repo working dir
+logs/
+**/.claude/data/

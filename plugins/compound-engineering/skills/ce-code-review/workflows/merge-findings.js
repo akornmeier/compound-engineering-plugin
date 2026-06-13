@@ -1,0 +1,294 @@
+// Deterministic port of ce-code-review "Stage 5: Merge findings".
+//
+// Pure module: no Workflow/Agent/filesystem dependencies. It is importable by
+// `bun test` AND designed to be inlined into the dynamic workflow script
+// (the Workflow runtime is self-contained and cannot `import` a sibling file,
+// so code-review-fanout.js prepends this module's function bodies; the single
+// trailing `export` line is the only thing that must be stripped on inline).
+//
+// Faithful to:
+//   plugins/compound-engineering/skills/ce-code-review/SKILL.md  ("Stage 5")
+//   plugins/compound-engineering/skills/ce-code-review/references/findings-schema.json
+//
+// Where the prose delegates a decision to model judgment, this module makes an
+// explicit, test-pinned choice marked [INTERP]. Those choices are the parity
+// risk surfaced at the U1->U2 checkpoint; the parity eval (U5) is the backstop.
+
+const SEVERITY_RANK = { P0: 3, P1: 2, P2: 1, P3: 0 };
+const VALID_SEVERITY = new Set(["P0", "P1", "P2", "P3"]);
+const VALID_AUTOFIX = new Set(["gated_auto", "manual", "advisory"]);
+const VALID_OWNER = new Set(["downstream-resolver", "human", "release"]);
+const VALID_ANCHORS = new Set([0, 25, 50, 75, 100]);
+const WEAK_SIGNAL_REVIEWERS = new Set(["testing", "maintainability"]);
+const LINE_WINDOW = 3; // Stage 5 step 2: line_bucket(line, +/-3)
+
+// [INTERP] "keep the more conservative route" (step 6) — the prose never
+// defines a total order. Conservative = least likely to silently auto-change
+// code / most likely to need a human: manual > advisory > gated_auto, and
+// human > release > downstream-resolver. Pick the max across contributors.
+const AUTOFIX_CONSERVATISM = { manual: 2, advisory: 1, gated_auto: 0 };
+const OWNER_CONSERVATISM = { human: 2, release: 1, "downstream-resolver": 0 };
+
+function normalize(value) {
+  return String(value).trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// Step 6: remap legacy route vocabulary. [INTERP] Applied during validation so
+// legacy-but-meaningful findings are remapped, not dropped by the value check.
+function remapAutofix(value) {
+  return value === "safe_auto" ? "gated_auto" : value;
+}
+function remapOwner(value) {
+  return value === "review-fixer" ? "downstream-resolver" : value;
+}
+
+// Step 1: Validate. Drop malformed returns (whole) and findings (individual),
+// counting both. Validates merge-tier fields only — detail-tier (why_it_matters,
+// evidence) lives in the on-disk artifact, not the compact return.
+function validate(returns) {
+  const findings = [];
+  const softBuckets = { residual_risks: [], testing_gaps: [] };
+  let droppedReturns = 0;
+  let droppedFindings = 0;
+
+  for (const ret of Array.isArray(returns) ? returns : []) {
+    if (
+      !ret ||
+      typeof ret.reviewer !== "string" ||
+      !Array.isArray(ret.findings) ||
+      !Array.isArray(ret.residual_risks) ||
+      !Array.isArray(ret.testing_gaps)
+    ) {
+      droppedReturns++;
+      continue;
+    }
+    softBuckets.residual_risks.push(...ret.residual_risks);
+    softBuckets.testing_gaps.push(...ret.testing_gaps);
+
+    for (const raw of ret.findings) {
+      if (!raw || typeof raw !== "object") {
+        droppedFindings++;
+        continue;
+      }
+      const autofix_class = remapAutofix(raw.autofix_class);
+      const owner = remapOwner(raw.owner);
+      if (
+        typeof raw.title !== "string" ||
+        !VALID_SEVERITY.has(raw.severity) ||
+        typeof raw.file !== "string" ||
+        !Number.isInteger(raw.line) ||
+        raw.line < 1 ||
+        !VALID_ANCHORS.has(raw.confidence) ||
+        !VALID_AUTOFIX.has(autofix_class) ||
+        !VALID_OWNER.has(owner) ||
+        typeof raw.requires_verification !== "boolean" ||
+        typeof raw.pre_existing !== "boolean"
+      ) {
+        droppedFindings++;
+        continue;
+      }
+      findings.push({
+        title: raw.title,
+        severity: raw.severity,
+        file: raw.file,
+        line: raw.line,
+        confidence: raw.confidence,
+        autofix_class,
+        owner,
+        requires_verification: raw.requires_verification,
+        pre_existing: raw.pre_existing,
+        suggested_fix: typeof raw.suggested_fix === "string" ? raw.suggested_fix : null,
+        _reviewer: ret.reviewer,
+      });
+    }
+  }
+  return { findings, softBuckets, droppedReturns, droppedFindings };
+}
+
+// Steps 2-3 grouping: cluster by (normalized file, normalized title), then
+// within each group greedily window findings whose line is within +/-3 of the
+// cluster anchor (the lowest line in the cluster). [INTERP] The prose frames
+// this as a hashable "fingerprint", but +/-3 is a window, not a bucket — so it
+// is implemented as deterministic clustering anchored at the lowest line.
+function cluster(findings) {
+  const groups = new Map();
+  for (const finding of findings) {
+    const key = JSON.stringify([normalize(finding.file), normalize(finding.title)]);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(finding);
+  }
+  const clusters = [];
+  for (const key of [...groups.keys()].sort()) {
+    const items = groups
+      .get(key)
+      .sort((a, b) => a.line - b.line || a._reviewer.localeCompare(b._reviewer));
+    let current = null;
+    for (const finding of items) {
+      if (current && finding.line - current.anchorLine <= LINE_WINDOW) {
+        current.members.push(finding);
+      } else {
+        current = { anchorLine: finding.line, members: [finding] };
+        clusters.push(current);
+      }
+    }
+  }
+  return clusters;
+}
+
+// Step 3 promotion: 2+ distinct reviewers lift the anchor one step.
+// Only the documented anchors move (50->75->100->100); anchors below 50 are
+// left alone (they cannot clear the gate anyway except via the P0 exception).
+function promoteAnchor(anchor) {
+  if (anchor === 50) return 75;
+  if (anchor === 75) return 100;
+  return anchor;
+}
+
+// Steps 2-3, 5-6: merge a cluster into one finding.
+function mergeCluster(members) {
+  const reviewers = [...new Set(members.map((m) => m._reviewer))].sort();
+  // Representative display fields come from the highest-severity, then
+  // highest-anchor, then first-by-reviewer member.
+  const rep = [...members].sort(
+    (a, b) =>
+      SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
+      b.confidence - a.confidence ||
+      a._reviewer.localeCompare(b._reviewer),
+  )[0];
+
+  const severity = members.reduce(
+    (acc, m) => (SEVERITY_RANK[m.severity] > SEVERITY_RANK[acc] ? m.severity : acc),
+    "P3",
+  );
+  let confidence = Math.max(...members.map((m) => m.confidence));
+  if (reviewers.length >= 2) confidence = promoteAnchor(confidence);
+
+  // [INTERP] pre_existing only when EVERY contributor agrees it predates the
+  // diff; if any reviewer thinks the diff introduced it, keep it in primary.
+  const pre_existing = members.every((m) => m.pre_existing === true);
+
+  const autofix_class = members
+    .map((m) => m.autofix_class)
+    .reduce((a, b) => (AUTOFIX_CONSERVATISM[b] > AUTOFIX_CONSERVATISM[a] ? b : a));
+  const owner = members
+    .map((m) => m.owner)
+    .reduce((a, b) => (OWNER_CONSERVATISM[b] > OWNER_CONSERVATISM[a] ? b : a));
+  const requires_verification = members.some((m) => m.requires_verification === true);
+  const suggested_fix =
+    (members.find((m) => m._reviewer === rep._reviewer && m.suggested_fix) ||
+      members.find((m) => m.suggested_fix) ||
+      {}).suggested_fix ?? null;
+
+  return {
+    title: rep.title,
+    file: rep.file,
+    line: rep.line,
+    severity,
+    confidence,
+    autofix_class,
+    owner,
+    requires_verification,
+    pre_existing,
+    suggested_fix,
+    reviewers,
+  };
+}
+
+// Step 6b: mode-aware demotion of weak general-quality findings.
+function isDemotable(finding) {
+  return (
+    (finding.severity === "P2" || finding.severity === "P3") &&
+    finding.autofix_class === "advisory" &&
+    finding.reviewers.every((r) => WEAK_SIGNAL_REVIEWERS.has(r))
+  );
+}
+
+// Step 7: confidence gate. Suppress below anchor 75; P0 at 50+ escapes.
+function survivesGate(finding) {
+  if (finding.confidence >= 75) return true;
+  if (finding.severity === "P0" && finding.confidence >= 50) return true;
+  return false;
+}
+
+// Step 9: sort severity (P0 first) -> anchor desc -> file -> line, then number.
+function sortAndNumber(findings) {
+  const sorted = [...findings].sort(
+    (a, b) =>
+      SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
+      b.confidence - a.confidence ||
+      a.file.localeCompare(b.file) ||
+      a.line - b.line,
+  );
+  sorted.forEach((finding, index) => {
+    finding.number = index + 1;
+  });
+  return sorted;
+}
+
+/**
+ * Merge an array of reviewer compact returns into one deduplicated,
+ * confidence-gated finding set. Returns the merged structures the mode:agent
+ * envelope needs; the envelope itself (status/verdict/scope/...) is assembled
+ * by the workflow (U2), not here.
+ *
+ * @param {Array<{reviewer:string, findings:Array, residual_risks:Array, testing_gaps:Array}>} returns
+ */
+function mergeFindings(returns) {
+  const { findings, softBuckets, droppedReturns, droppedFindings } = validate(returns);
+
+  const merged = cluster(findings).map((c) => mergeCluster(c.members));
+
+  // Step 4: separate pre-existing.
+  const preExisting = merged.filter((f) => f.pre_existing);
+  let primary = merged.filter((f) => !f.pre_existing);
+
+  // Step 6b: demote qualifying weak findings into soft buckets.
+  const residual_risks = [...softBuckets.residual_risks];
+  const testing_gaps = [...softBuckets.testing_gaps];
+  let demotedCount = 0;
+  primary = primary.filter((finding) => {
+    if (!isDemotable(finding)) return true;
+    const line = `${finding.file}:${finding.line} -- ${finding.title}`;
+    // A demoted cluster flagged by both weak personas belongs in both buckets —
+    // routing to only one loses the other persona's signal.
+    if (finding.reviewers.includes("testing")) testing_gaps.push(line);
+    if (finding.reviewers.includes("maintainability")) residual_risks.push(line);
+    demotedCount++;
+    return false;
+  });
+
+  // Step 7: confidence gate, counting suppressions by anchor.
+  const suppressedByAnchor = {};
+  primary = primary.filter((finding) => {
+    if (survivesGate(finding)) return true;
+    const key = String(finding.confidence);
+    suppressedByAnchor[key] = (suppressedByAnchor[key] || 0) + 1;
+    return false;
+  });
+
+  // Step 9: sort + stable numbering across the full primary set.
+  primary = sortAndNumber(primary);
+
+  // Step 8: partition (references the same numbered findings).
+  const actionable_findings = primary.filter(
+    (f) =>
+      (f.autofix_class === "gated_auto" || f.autofix_class === "manual") &&
+      f.owner === "downstream-resolver",
+  );
+
+  return {
+    findings: primary,
+    actionable_findings,
+    pre_existing_findings: preExisting,
+    residual_risks,
+    testing_gaps,
+    coverage: {
+      dropped_returns: droppedReturns,
+      dropped_findings: droppedFindings,
+      demoted: demotedCount,
+      suppressed_by_anchor: suppressedByAnchor,
+    },
+  };
+}
+
+export { mergeFindings, normalize };

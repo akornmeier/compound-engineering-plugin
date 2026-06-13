@@ -43,7 +43,7 @@ After extracting tokens from arguments, resolve the delegation state using this 
 3. **Hard default** -- `false` (delegation off)
 
 **Config (pre-resolved):**
-!`(top=$(git rev-parse --show-toplevel 2>/dev/null); [ -n "$top" ] && cat "$top/.compound-engineering/config.local.yaml" 2>/dev/null) || echo '__NO_CONFIG__'`
+!`cat "$(git rev-parse --show-toplevel 2>/dev/null)/.compound-engineering/config.local.yaml" 2>/dev/null || echo '__NO_CONFIG__'`
 
 If the block above contains YAML key-value pairs, extract values for the keys listed below.
 If it shows `__NO_CONFIG__`, the file does not exist — all settings fall through to defaults.
@@ -65,7 +65,8 @@ Store the resolved state for downstream consumption:
 - `sandbox_mode` -- `yolo` or `full-auto` (from config or default `yolo`)
 - `consent_granted` -- boolean (from config `work_delegate_consent`)
 - `delegate_model` -- string from config, or unset (defer to Codex config)
-- `delegate_effort` -- string from config, or unset (defer to Codex config)
+- `delegate_effort` -- string from config, or unset (defer to Codex config). Floor for per-batch effort selection; not passed directly to `codex exec`.
+- `effective_effort` -- per-batch derived value (`default | medium | high | xhigh`), computed before each batch from `delegate_effort` and the picked level per `references/codex-delegation-workflow.md` ("Per-Batch Effort"). Feeds the `codex exec` invocation in place of `delegate_effort`.
 
 ---
 
@@ -358,7 +359,7 @@ Determine how to proceed based on what was provided in `<input_document>`.
 
    Don't simplify after every single unit — early patterns may look duplicated but diverge intentionally in later units. Wait for a natural phase boundary or when you notice accumulated complexity.
 
-   If a `/simplify` skill or equivalent is available, use it. Otherwise, review the changed files yourself for reuse and consolidation opportunities.
+   If **`ce-simplify-code`** is available, invoke it at phase boundaries (especially before Phase 3 when the diff is >=30 lines). Otherwise, review the changed files yourself for reuse and consolidation opportunities.
 
 6. **Figma Design Sync** (if applicable)
 
@@ -421,7 +422,7 @@ When `delegation_active` is true after argument parsing, read `references/codex-
 - Follow existing patterns
 - Write tests for new code
 - Run linting before pushing
-- Review every change — inline for simple additive work, full review for everything else
+- Review when Tier 1 is available or Tier 2 criteria match (see `shipping-workflow.md`)
 
 ### Ship Complete Features
 
@@ -437,5 +438,5 @@ When `delegation_active` is true after argument parsing, read `references/codex-
 - **Testing at the end** - Test continuously or suffer later
 - **Forgetting to track progress** - Update task status as you go or lose track of what's done
 - **80% done syndrome** - Finish the feature, don't move on early
-- **Skipping review** - Every change gets reviewed; only the depth varies
+- **Skipping review without reason** — Use Tier 1 when available; escalate to Tier 2 only on criteria in `shipping-workflow.md`; document when both are skipped
 - **Re-scoping the plan into human-time phases** - The plan's Implementation Units define the scope of execution. Do not estimate human-hours per unit, propose multi-day breakdowns, or ask the user to pick a subset of units for "this session". Agents execute at agent speed, and context-window pressure is addressed by subagent dispatch (Phase 1 Step 4), not by phased sessions. If a plan-file input is genuinely too large for a single execution, say so plainly and suggest the user return to `/ce-plan` to reduce scope — don't invent session phases as a workaround. For bare-prompt input, Phase 0's Large routing already handles oversized work

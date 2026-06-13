@@ -20,7 +20,7 @@ bun run release:validate  # check plugin/marketplace consistency
 ## Working Agreement
 
 - **Branching:** Create a feature branch for any non-trivial change. If already on the correct branch for the task, keep using it; do not create additional branches or worktrees unless explicitly requested.
-- **Merge policy:** All changes to `main` go through pull requests. Direct pushes and direct merges are not allowed; branch protection on `main` enforces this by requiring the `test` status check to pass. The direct path bypasses `release:validate`, the test suite, and PR title validation — past direct merges have caused version drift requiring multi-PR recovery (see `docs/solutions/workflow/release-please-version-drift-recovery.md`).
+- **Merge policy:** All changes to `main` go through pull requests. Direct pushes and direct merges are not allowed. As of 2026-06-12 this is machine-enforced: the `main` ruleset requires the `test` status check to pass and branches to be up-to-date before merging (implementing the ruleset recommendations in `plugins/compound-engineering/skills/ce-learning-sweep/references/trigger-recipe.md`), alongside deletion protection, non-fast-forward, and Copilot review. Caveat: repository admins have an always-on bypass actor on the ruleset, so the gate binds them only if they decline the bypass — do not bypass. The direct path skips `release:validate`, the test suite, and PR title validation — past direct merges have caused version drift requiring multi-PR recovery (see `docs/solutions/workflow/release-please-version-drift-recovery.md`).
 - **Safety:** Do not delete or overwrite user data. Avoid destructive commands.
 - **Testing:** Run `bun test` after changes that affect parsing, conversion, or output.
 - **Release versioning:** Releases are prepared by release automation, not normal feature PRs. The repo now has multiple release components (`cli`, `compound-engineering`, `coding-tutor`, `marketplace`). GitHub release PRs and GitHub Releases are the canonical release-notes surface for new releases; root `CHANGELOG.md` is only a pointer to that history. Use conventional titles such as `feat:` and `fix:` so release automation can classify change intent, but do not hand-bump release-owned versions or hand-author release notes in routine PRs.
@@ -50,7 +50,22 @@ plugins/          Plugin workspaces (compound-engineering, coding-tutor)
 .claude-plugin/   Claude marketplace catalog metadata
 tests/            Converter, writer, and CLI tests + fixtures
 docs/             Requirements, plans, solutions, and target specs
+CONCEPTS.md       Shared domain vocabulary (glossary of project-specific terms)
 ```
+
+## Intent Layer
+
+**Before modifying code in a subdirectory that has its own `AGENTS.md`, read that file first** to understand local entry points, contracts, and anti-patterns.
+
+- **CLI / converters**: `src/AGENTS.md` — the Bun/TypeScript CLI that parses Claude plugins and converts them to other agent platforms.
+- **Plugin authoring**: `plugins/compound-engineering/AGENTS.md` — skill/agent conventions, the `ce-` prefix rule, release-version restrictions, and skill-spec compliance.
+
+### Global Invariants
+
+- `AGENTS.md` is the single source of truth. Each node pairs it with a one-line `CLAUDE.md` shim (`@AGENTS.md`) for tools that look for `CLAUDE.md`. Edit `AGENTS.md`, never the shim.
+- A change may span multiple surfaces (CLI, plugin, marketplace catalog). Confirm which surface owns the affected files; do not assume "just CLI" or "just plugin" (see Repo Surfaces below).
+- Releases are automation-owned. Do not hand-bump release versions or hand-author changelog entries in routine PRs.
+- After changes that affect parsing, conversion, or output, run `bun test`; after changes to agents/commands/skills/manifests, run `bun run release:validate`.
 
 ## Repo Surfaces
 

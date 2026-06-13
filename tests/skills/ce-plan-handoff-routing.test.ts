@@ -52,6 +52,11 @@ describe("ce-plan post-generation menu routing", () => {
       { name: "Start /ce-work", fragment: "Start `/ce-work`" },
       { name: "Create Issue", fragment: "Create Issue" },
       { name: "Open in Proof", fragment: "Open in Proof" },
+      // "Open in browser" is the HTML-mode replacement for Open in Proof.
+      // Both routings must be present inline: the menu shows one or the other
+      // depending on OUTPUT_FORMAT, so the agent needs both bullets to route
+      // correctly without loading the reference.
+      { name: "Open in browser", fragment: "Open in browser" },
       { name: "Done for now", fragment: "Done for now" },
     ]
 
@@ -86,11 +91,14 @@ describe("ce-plan post-generation menu routing", () => {
     // This is what makes the difference between "tell the user to type
     // /ce-work" and "fire the Skill tool now."
     //
-    // Anchor on the bullet form `- **Start \`/ce-work\`**` to avoid matching
-    // the numbered menu list entry `1. **Start \`/ce-work\`** (recommended) -`,
-    // which legitimately doesn't carry the routing language.
+    // Anchor on the bullet form `- **Start \`/ce-work\` here (same session)**`
+    // to avoid matching the numbered menu list entry
+    // `1. **Start \`/ce-work\` here (same session)** (recommended ...) -`,
+    // which legitimately doesn't carry the routing language. The label suffix
+    // after `/ce-work` is allowed to vary (the R14 menu split added
+    // "here (same session)").
     const ceWorkRoutingMatch = phaseRegion.match(
-      /^- \*\*Start `\/ce-work`\*\*[\s\S]{0,500}/m,
+      /^- \*\*Start `\/ce-work`[^*\n]*\*\*[\s\S]{0,500}/m,
     )
     expect(
       ceWorkRoutingMatch,
@@ -114,7 +122,7 @@ describe("ce-plan post-generation menu routing", () => {
     // also use platform-explicit invocation language so that an agent which
     // does load the reference sees compatible (not contradictory) guidance.
     const ceWorkLine = HANDOFF_BODY.match(
-      /\*\*Start `\/ce-work`\*\*[^\n]*->[^\n]+/,
+      /\*\*Start `\/ce-work`[^*\n]*\*\*[^\n]*->[^\n]+/,
     )
     expect(
       ceWorkLine,

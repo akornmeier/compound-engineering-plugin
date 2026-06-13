@@ -107,6 +107,65 @@ describe("frontmatter YAML validity", () => {
           expect(name, `frontmatter name "${name}" must match parent directory "${dirName}"`).toBe(dirName)
           expect(name, `frontmatter name "${name}" must be lowercase a-z, 0-9, and hyphens`).toMatch(/^[a-z0-9-]+$/)
         })
+
+        // All compound-engineering skills (and agents) must use the `ce-` prefix
+        // so they are unambiguously identifiable as compound-engineering
+        // components. See plugins/compound-engineering/AGENTS.md "Naming
+        // Convention". A small allowlist preserves three pre-existing skills
+        // that predate the rule -- no new entries should be added.
+        if (pluginRoot === "plugins/compound-engineering") {
+          const SKILL_PREFIX_ALLOWLIST = new Set([
+            "every-style-editor",
+            "file-todos",
+            "lfg",
+          ])
+          test(`${pluginRoot}/${rel} skill name uses ce- prefix`, () => {
+            const dirName = path.basename(path.dirname(rel))
+            if (SKILL_PREFIX_ALLOWLIST.has(dirName)) return
+            expect(
+              dirName.startsWith("ce-"),
+              `Skill "${dirName}" must use the ce- prefix. ` +
+                `If this is a legacy skill that predates the rule, add it to ` +
+                `SKILL_PREFIX_ALLOWLIST in tests/frontmatter.test.ts.`,
+            ).toBe(true)
+          })
+        }
+      }
+
+      if (
+        pluginRoot === "plugins/compound-engineering" &&
+        /^agents\/[^/]+\.md$/.test(rel)
+      ) {
+        test(`${pluginRoot}/${rel} agent name uses ce- prefix`, () => {
+          const fileName = path.basename(rel, ".md")
+          expect(
+            fileName.startsWith("ce-"),
+            `Agent "${fileName}" must use the ce- prefix.`,
+          ).toBe(true)
+        })
+
+        // Pure document-reasoning reviewers operate on document text already
+        // passed in their prompt and do not look at the codebase. Granting
+        // Bash invites the model -- especially on weaker models like haiku --
+        // to externalize state via temp-file scratchpads, which can hang
+        // indefinitely on platforms whose bash tool blocks on heredocs (see
+        // issue #832 for the OpenCode coherence-reviewer stall).
+        const NO_BASH_AGENTS = new Set([
+          "ce-coherence-reviewer",
+        ])
+        const agentName = path.basename(rel, ".md")
+        if (NO_BASH_AGENTS.has(agentName)) {
+          test(`${pluginRoot}/${rel} pure document reviewer must not allow Bash`, () => {
+            const parsed = load(yaml) as Record<string, unknown> | null
+            const tools = parsed && typeof parsed.tools === "string" ? parsed.tools : ""
+            const toolList = tools.split(",").map((s) => s.trim())
+            expect(
+              toolList.includes("Bash"),
+              `Agent "${agentName}" reviews documents from prompt context only and does ` +
+                `not need shell access. Remove Bash from the tools allowlist (see issue #832).`,
+            ).toBe(false)
+          })
+        }
       }
     }
   }

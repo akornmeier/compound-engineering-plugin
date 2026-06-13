@@ -85,6 +85,8 @@ export const STALE_SKILL_DIRS = [
   "ce-document-review",
   "ce-plan-beta",
   "ce-review-beta",
+  // ce-polish-beta -> ce-polish (promoted to stable)
+  "ce-polish-beta",
 
   // Removed skills (no replacement)
   "ce-andrew-kane-gem-writer",
@@ -94,6 +96,13 @@ export const STALE_SKILL_DIRS = [
   "ce-every-style-editor",
   "ce-onboarding",
   "ce-pr-description",
+
+  // ce-session-inventory and ce-session-extract were script-host skills called
+  // only from ce-session-historian via the Skill tool. That dispatch path
+  // deadlocked on Claude Code (subagents cannot invoke Skill — issue #794), so
+  // their scripts moved into ce-sessions/scripts/ and the skills were removed.
+  "ce-session-inventory",
+  "ce-session-extract",
 ]
 
 /** Old agent names (used as generated skill dirs or flat .md files). */
@@ -109,6 +118,13 @@ const STALE_AGENT_NAMES = [
   "bug-reproduction-validator",
   "ce-cli-agent-readiness-reviewer",
   "ce-cli-readiness-reviewer",
+  "ce-data-migration-expert",
+  "ce-data-migrations-reviewer",
+  "ce-dhh-rails-reviewer",
+  "ce-kieran-python-reviewer",
+  "ce-kieran-rails-reviewer",
+  "ce-kieran-typescript-reviewer",
+  "ce-schema-drift-detector",
   "cli-agent-readiness-reviewer",
   "cli-readiness-reviewer",
   "code-simplicity-reviewer",
@@ -281,6 +297,10 @@ const LEGACY_ONLY_SKILL_DESCRIPTIONS: Record<string, string> = {
     "This skill should be used when reviewing or editing copy to ensure adherence to Every's style guide. It provides a systematic line-by-line review process for grammar, punctuation, mechanics, and style guide compliance.",
   "ce-pr-description":
     "Write or regenerate a value-first pull-request description (title + body) for the current branch's commits or for a specified PR. Use when the user says 'write a PR description', 'refresh the PR description', 'regenerate the PR body', 'rewrite this PR', 'freshen the PR', 'update the PR description', 'draft a PR body for this diff', 'describe this PR properly', 'generate the PR title', or pastes a GitHub PR URL / #NN / number. Also used internally by ce-commit-push-pr (single-PR flow) and ce-pr-stack (per-layer stack descriptions) so all callers share one writing voice. Input is a natural-language prompt. A PR reference (a full GitHub PR URL, `pr:561`, `#561`, or a bare number alone) picks a specific PR; anything else is treated as optional steering for the default 'describe my current branch' mode. Returns structured {title, body_file} (body written to an OS temp file) for the caller to apply via gh pr edit or gh pr create — this skill never edits the PR itself and never prompts for confirmation.",
+  "ce-session-extract":
+    "Extract conversation skeleton or error signals from a single session file at a given path. Invoked by session-research agents after they have selected which sessions to deep-dive — not intended for direct user queries.",
+  "ce-session-inventory":
+    "Discover session files for a repo across Claude Code, Codex, and Cursor, and extract session metadata (timestamps, branch, cwd, size, platform). Invoked by session-research agents — not intended for direct user queries.",
 }
 
 /**
@@ -301,6 +321,34 @@ const LEGACY_ONLY_AGENT_DESCRIPTIONS: Record<string, string> = {
     "Conditional code-review persona, selected when the diff touches CLI command definitions, argument parsing, or command handler implementations. Reviews CLI code for agent readiness -- how well the CLI serves autonomous agents, not just human users.",
   "ce-cli-readiness-reviewer":
     "Conditional code-review persona, selected when the diff touches CLI command definitions, argument parsing, or command handler implementations. Reviews CLI code for agent readiness -- how well the CLI serves autonomous agents, not just human users.",
+  "data-migration-expert":
+    "Validates data migrations, backfills, and production data transformations against reality. Use when PRs involve ID mappings, column renames, enum conversions, or schema changes.",
+  "data-migrations-reviewer":
+    "Conditional code-review persona, selected when the diff touches migration files, schema changes, data transformations, or backfill scripts. Reviews code for data integrity and migration safety.",
+  "dhh-rails-reviewer":
+    "Conditional code-review persona, selected when Rails diffs introduce architectural choices, abstractions, or frontend patterns that may fight the framework. Reviews code from an opinionated DHH perspective.",
+  "kieran-python-reviewer":
+    "Conditional code-review persona, selected when the diff touches Python code. Reviews changes with Kieran's strict bar for Pythonic clarity, type hints, and maintainability.",
+  "kieran-rails-reviewer":
+    "Conditional code-review persona, selected when the diff touches Rails application code. Reviews Rails changes with Kieran's strict bar for clarity, conventions, and maintainability.",
+  "kieran-typescript-reviewer":
+    "Conditional code-review persona, selected when the diff touches TypeScript code. Reviews changes with Kieran's strict bar for type safety, clarity, and maintainability.",
+  "schema-drift-detector":
+    "Detects unrelated schema.rb changes in PRs by cross-referencing against included migrations. Use when reviewing PRs with database schema changes.",
+  "ce-data-migration-expert":
+    "Validates data migrations, backfills, and production data transformations against reality. Use when PRs involve ID mappings, column renames, enum conversions, or schema changes.",
+  "ce-data-migrations-reviewer":
+    "Conditional code-review persona, selected when the diff touches migration files, schema changes, data transformations, or backfill scripts. Reviews code for data integrity and migration safety.",
+  "ce-dhh-rails-reviewer":
+    "Conditional code-review persona, selected when Rails diffs introduce architectural choices, abstractions, or frontend patterns that may fight the framework. Reviews code from an opinionated DHH perspective.",
+  "ce-kieran-python-reviewer":
+    "Conditional code-review persona, selected when the diff touches Python code. Reviews changes with Kieran's strict bar for Pythonic clarity, type hints, and maintainability.",
+  "ce-kieran-rails-reviewer":
+    "Conditional code-review persona, selected when the diff touches Rails application code. Reviews Rails changes with Kieran's strict bar for clarity, conventions, and maintainability.",
+  "ce-kieran-typescript-reviewer":
+    "Conditional code-review persona, selected when the diff touches TypeScript code. Reviews changes with Kieran's strict bar for type safety, clarity, and maintainability.",
+  "ce-schema-drift-detector":
+    "Detects unrelated schema.rb changes in PRs by cross-referencing against included migrations. Use when reviewing PRs with database schema changes.",
 }
 
 type LegacyFingerprints = {
@@ -310,6 +358,10 @@ type LegacyFingerprints = {
 }
 
 let legacyFingerprintsPromise: Promise<LegacyFingerprints> | null = null
+
+function currentAgentNameForLegacy(legacyName: string): string {
+  return legacyName.startsWith("ce-") ? legacyName : `ce-${legacyName}`
+}
 
 function currentSkillNameForLegacy(legacyName: string): string {
   if (legacyName === "ce:review" || legacyName === "workflows:review" || legacyName === "workflows-review") {
@@ -460,7 +512,7 @@ async function loadLegacyFingerprints(): Promise<LegacyFingerprints> {
       }
 
       for (const legacyName of STALE_AGENT_NAMES) {
-        const currentPath = agentIndex.get(`ce-${legacyName}`)
+        const currentPath = agentIndex.get(currentAgentNameForLegacy(legacyName))
         if (currentPath) {
           const description = await readDescription(currentPath)
           if (description) agents.set(legacyName, description)

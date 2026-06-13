@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Loop System — Compound Engineering</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f5f5f5;
+    --ink: #2d3142;
+    --muted: #4f5d75;
+    --soft: #7a8399;
+    --rule: rgba(45,49,66,0.12);
+    --accent: #eb6c36;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Geist', sans-serif;
+    padding: 48px 32px 32px;
+  }
+  .page { max-width: 1008px; margin: 0 auto; }
+  .eyebrow {
+    font-family: 'Geist Mono', monospace;
+    font-size: 8px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--soft);
+  }
+  header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.75rem;
+    font-weight: 400;
+    margin: 8px 0;
+  }
+  header .subtitle {
+    font-size: 0.875rem;
+    color: var(--muted);
+    max-width: 720px;
+    line-height: 1.5;
+  }
+  section.loop { margin-top: 48px; }
+  section.loop .lede {
+    font-size: 0.8125rem;
+    color: var(--muted);
+    margin: 4px 0 12px;
+    max-width: 720px;
+  }
+  svg { display: block; width: 100%; height: auto; }
+  .legend {
+    margin-top: 40px;
+    padding-top: 12px;
+    border-top: 0.8px solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 32px;
+    align-items: center;
+    font-family: 'Geist Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .legend .swatch { display: inline-flex; align-items: center; gap: 8px; }
+  .cards {
+    margin-top: 40px;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 0.9fr;
+    gap: 16px;
+  }
+  .card {
+    background: #ffffff;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 1.25rem;
+  }
+  .card-header { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .card-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .card-dot.coral { background: var(--accent); }
+  .card-dot.ink { background: var(--ink); }
+  .card-dot.muted { background: var(--muted); }
+  .card h3 { font-size: 0.875rem; font-weight: 600; }
+  .card .goal { font-size: 0.8125rem; color: var(--muted); line-height: 1.5; }
+  .card ul {
+    list-style: none;
+    margin-top: 12px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    color: var(--soft);
+  }
+  .card ul li { padding: 4px 0; border-top: 0.8px solid var(--rule); line-height: 1.5; }
+  footer {
+    margin-top: 48px;
+    padding-top: 12px;
+    border-top: 0.8px solid var(--rule);
+    font-family: 'Geist Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--soft);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <p class="eyebrow">Compound Engineering — Schematic</p>
+  <h1>The Loop System</h1>
+  <p class="subtitle">The developer authors loops; the system runs them; the human holds the corpus
+  gate. An edge graduates from manual to automatic only by passing its pre-committed signal gate
+  (ADR&nbsp;0001). Default mode prompts the human at every judgment point; autonomy is a per-run,
+  explicit parameter — never an inheritance.</p>
+</header>
+
+<!-- ================= LOOP 01 — LEARNING-CAPTURE ================= -->
+<section class="loop">
+  <p class="eyebrow">Loop 01 — Learning-capture</p>
+  <p class="lede">Every durable learning from merged work reaches the corpus without relying on anyone's memory.</p>
+  <svg viewBox="0 0 960 208" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Learning-capture loop: PR merged, sweep, keep/reject, capture, corpus, compounding back to sweep">
+    <defs>
+      <marker id="arr1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+      </marker>
+    </defs>
+
+    <!-- arrows first (z-order behind boxes) -->
+    <line x1="136" y1="100" x2="204" y2="100" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arr1)"/>
+    <line x1="336" y1="100" x2="404" y2="100" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr1)"/>
+    <line x1="536" y1="100" x2="604" y2="100" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arr1)"/>
+    <line x1="736" y1="100" x2="804" y2="100" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr1)"/>
+    <!-- return edge: corpus compounds the next sweep -->
+    <path d="M 872 128 L 872 176 L 280 176 L 280 132" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr1)"/>
+
+    <!-- arrow labels (masked) -->
+    <rect x="140" y="88" width="64" height="12" rx="2" fill="#f5f5f5"/>
+    <text x="172" y="96" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TRIGGER · V2</text>
+    <rect x="352" y="88" width="40" height="12" rx="2" fill="#f5f5f5"/>
+    <text x="372" y="96" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">REPORT</text>
+    <rect x="540" y="88" width="64" height="12" rx="2" fill="#f5f5f5"/>
+    <text x="572" y="96" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">V2 · EXECUTE</text>
+    <rect x="544" y="168" width="64" height="16" rx="2" fill="#f5f5f5"/>
+    <text x="576" y="180" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">COMPOUNDS</text>
+
+    <!-- nodes -->
+    <!-- PR merged (input) -->
+    <rect x="24" y="72" width="112" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="24" y="72" width="112" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+    <text x="80" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">PR merged</text>
+    <text x="80" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">merge to main</text>
+
+    <!-- Sweep (backend) -->
+    <rect x="208" y="72" width="128" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="208" y="72" width="128" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+    <text x="272" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Sweep</text>
+    <text x="272" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">mine · gate · verdict</text>
+
+    <!-- Keep / reject (focal — the human gate) -->
+    <rect x="408" y="72" width="128" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="408" y="72" width="128" height="56" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+    <text x="472" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Keep / reject</text>
+    <text x="472" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">default: PR review</text>
+
+    <!-- Capture (backend) -->
+    <rect x="608" y="72" width="128" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="608" y="72" width="128" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+    <text x="672" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Capture</text>
+    <text x="672" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ce-compound seam</text>
+
+    <!-- Corpus (store) -->
+    <rect x="808" y="72" width="128" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="808" y="72" width="128" height="56" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+    <text x="872" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Corpus</text>
+    <text x="872" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">docs/solutions/</text>
+
+    <!-- annotation callout -->
+    <text x="316" y="32" fill="#eb6c36" font-size="14" font-style="italic" font-family="'Instrument Serif', serif" text-anchor="end">the one permanent human decision</text>
+    <path d="M 328 36 Q 400 40 460 64" fill="none" stroke="rgba(235,108,54,0.50)" stroke-width="1" stroke-dasharray="4,3"/>
+    <circle cx="464" cy="68" r="2" fill="#eb6c36"/>
+  </svg>
+</section>
+
+<!-- ================= LOOP 02 — DRIFT ================= -->
+<section class="loop">
+  <p class="eyebrow">Loop 02 — Drift</p>
+  <p class="lede">Plans and reality reconverge: drift is measured per run, aggregated across runs, and read back into planning.</p>
+  <svg viewBox="0 0 960 208" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Drift loop: plan, work, verify probe, drift events, aggregation, feedback to plan">
+    <defs>
+      <marker id="arr2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+      </marker>
+    </defs>
+
+    <!-- arrows first -->
+    <line x1="136" y1="100" x2="204" y2="100" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr2)"/>
+    <line x1="336" y1="100" x2="404" y2="100" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arr2)"/>
+    <line x1="536" y1="100" x2="604" y2="100" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr2)"/>
+    <line x1="736" y1="100" x2="804" y2="100" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arr2)"/>
+    <path d="M 872 128 L 872 176 L 80 176 L 80 132" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arr2)"/>
+
+    <!-- arrow labels (masked) -->
+    <rect x="352" y="88" width="40" height="12" rx="2" fill="#f5f5f5"/>
+    <text x="372" y="96" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">MANUAL</text>
+    <rect x="544" y="88" width="56" height="12" rx="2" fill="#f5f5f5"/>
+    <text x="572" y="96" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CAPTURES</text>
+    <rect x="740" y="88" width="56" height="12" rx="2" fill="#f5f5f5"/>
+    <text x="768" y="96" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">READ · V2</text>
+    <rect x="436" y="168" width="84" height="16" rx="2" fill="#f5f5f5"/>
+    <text x="478" y="180" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FEEDBACK LATER</text>
+
+    <!-- nodes -->
+    <!-- Plan (input) -->
+    <rect x="24" y="72" width="112" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="24" y="72" width="112" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+    <text x="80" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Plan</text>
+    <text x="80" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">docs/plans/</text>
+
+    <!-- Work (backend) -->
+    <rect x="208" y="72" width="128" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="208" y="72" width="128" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+    <text x="272" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Work</text>
+    <text x="272" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ce-work · commits</text>
+
+    <!-- Verify probe (backend) -->
+    <rect x="408" y="72" width="128" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="408" y="72" width="128" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+    <text x="472" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Verify probe</text>
+    <text x="472" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ce-verify-work</text>
+
+    <!-- Drift events (store) -->
+    <rect x="608" y="72" width="128" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="608" y="72" width="128" height="56" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+    <text x="672" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Drift events</text>
+    <text x="672" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">docs/drift-events/</text>
+
+    <!-- Aggregation (optional / not built) -->
+    <rect x="808" y="72" width="128" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="808" y="72" width="128" height="56" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="872" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Aggregation</text>
+    <text x="872" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">rate at read time</text>
+
+    <!-- annotation callout -->
+    <text x="936" y="32" fill="#2d3142" font-size="14" font-style="italic" font-family="'Instrument Serif', serif" text-anchor="end">no human gate — a read-only loop</text>
+    <path d="M 920 40 Q 900 52 880 64" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="1" stroke-dasharray="4,3"/>
+    <circle cx="876" cy="68" r="2" fill="#2d3142"/>
+  </svg>
+</section>
+
+<!-- ================= LOOP 03 — REVIEW ================= -->
+<section class="loop">
+  <p class="eyebrow">Loop 03 — Review</p>
+  <p class="lede">A change converges to clean — findings fixed, reviewer comments triaged and resolved — without the human driving each pass.</p>
+  <svg viewBox="0 0 960 216" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Review loop: change, review, fix, triage feedback, re-verify, ship — with an inner until-resolved cycle between triage and fix, and an outer deferred iterate-until-clean return edge">
+    <defs>
+      <marker id="arr3" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+      </marker>
+    </defs>
+
+    <!-- arrows first -->
+    <line x1="120" y1="100" x2="156" y2="100" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr3)"/>
+    <line x1="272" y1="100" x2="308" y2="100" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr3)"/>
+    <line x1="408" y1="100" x2="444" y2="100" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr3)"/>
+    <line x1="592" y1="100" x2="628" y2="100" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr3)"/>
+    <line x1="744" y1="100" x2="780" y2="100" stroke="#4f5d75" stroke-width="1" marker-end="url(#arr3)"/>
+    <!-- inner return: triage feedback cycles back to fix until threads drain -->
+    <path d="M 520 128 L 520 160 L 360 160 L 360 132" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arr3)"/>
+    <!-- outer return: re-verify cycles back to review until clean -->
+    <path d="M 688 128 L 688 192 L 216 192 L 216 132" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arr3)"/>
+
+    <!-- arrow labels (masked) -->
+    <rect x="400" y="152" width="80" height="16" rx="2" fill="#f5f5f5"/>
+    <text x="440" y="164" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">UNTIL RESOLVED</text>
+    <rect x="416" y="184" width="72" height="16" rx="2" fill="#f5f5f5"/>
+    <text x="452" y="196" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">UNTIL CLEAN</text>
+
+    <!-- nodes -->
+    <!-- Change (input) -->
+    <rect x="24" y="72" width="96" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="24" y="72" width="96" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+    <text x="72" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Change</text>
+    <text x="72" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">diff on branch</text>
+
+    <!-- Review (backend) -->
+    <rect x="160" y="72" width="112" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="160" y="72" width="112" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+    <text x="216" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Review</text>
+    <text x="216" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ce-code-review</text>
+
+    <!-- Fix (backend) -->
+    <rect x="312" y="72" width="96" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="312" y="72" width="96" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+    <text x="360" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Fix</text>
+    <text x="360" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">apply · commit</text>
+
+    <!-- Triage feedback (backend) -->
+    <rect x="448" y="72" width="144" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="448" y="72" width="144" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+    <text x="520" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Triage feedback</text>
+    <text x="520" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ce-resolve-pr-feedback</text>
+
+    <!-- Re-verify (backend) -->
+    <rect x="632" y="72" width="112" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="632" y="72" width="112" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+    <text x="688" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Re-verify</text>
+    <text x="688" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">tests · re-review</text>
+
+    <!-- Ship (focal — the human merge call) -->
+    <rect x="784" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+    <rect x="784" y="72" width="152" height="56" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+    <text x="860" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Ship</text>
+    <text x="860" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">merge · human call</text>
+  </svg>
+</section>
+
+<!-- ================= SHARED LEGEND ================= -->
+<div class="legend">
+  <span class="eyebrow">Legend</span>
+  <span class="swatch">
+    <svg width="32" height="8" viewBox="0 0 32 8"><line x1="0" y1="4" x2="32" y2="4" stroke="#4f5d75" stroke-width="1"/></svg>
+    closed — runs without the human executing
+  </span>
+  <span class="swatch">
+    <svg width="32" height="8" viewBox="0 0 32 8"><line x1="0" y1="4" x2="32" y2="4" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4"/></svg>
+    dashed + V2 — closing this increment
+  </span>
+  <span class="swatch">
+    <svg width="32" height="8" viewBox="0 0 32 8"><line x1="0" y1="4" x2="32" y2="4" stroke="#7a8399" stroke-width="1" stroke-dasharray="5,4"/></svg>
+    dashed, no tag — open, closes later
+  </span>
+  <span class="swatch">
+    <svg width="20" height="12" viewBox="0 0 20 12"><rect x="1" y="1" width="18" height="10" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/></svg>
+    human gate — default prompts · autonomous by parameter
+  </span>
+</div>
+
+<!-- ================= SUMMARY CARDS ================= -->
+<div class="cards">
+  <div class="card">
+    <p class="eyebrow">Loop 01</p>
+    <div class="card-header">
+      <span class="card-dot coral"></span>
+      <h3>Learning-capture</h3>
+    </div>
+    <p class="goal">Every durable learning from merged work reaches the corpus without relying on anyone's memory.</p>
+    <ul>
+      <li>CLOSED v1 — sweep · gate · verdicts</li>
+      <li>CLOSES NOW — trigger · batched decision · execution</li>
+      <li>PERMANENT — human keep/reject, PR review default</li>
+    </ul>
+  </div>
+  <div class="card">
+    <p class="eyebrow">Loop 02</p>
+    <div class="card-header">
+      <span class="card-dot ink"></span>
+      <h3>Drift</h3>
+    </div>
+    <p class="goal">Plans and reality reconverge — drift measured per run, aggregated across runs, read back into planning.</p>
+    <ul>
+      <li>CLOSED v1 — probe · drift events</li>
+      <li>CLOSES NOW — read edge (aggregation)</li>
+      <li>LATER — feedback into planning</li>
+    </ul>
+  </div>
+  <div class="card">
+    <p class="eyebrow">Loop 03</p>
+    <div class="card-header">
+      <span class="card-dot muted"></span>
+      <h3>Review</h3>
+    </div>
+    <p class="goal">A change converges to clean — findings fixed, reviewer comments triaged and resolved — without the human driving each pass.</p>
+    <ul>
+      <li>CLOSED — single review pass · single triage pass</li>
+      <li>LATER — until-clean · until-resolved iteration</li>
+      <li>PERMANENT — the ship call</li>
+    </ul>
+  </div>
+</div>
+
+<footer>compound-engineering · loop system map · 2026-06-12</footer>
+
+</div>
+</body>
+</html>

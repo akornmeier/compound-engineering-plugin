@@ -1,5 +1,172 @@
 # Changelog
 
+## [3.11.0](https://github.com/akornmeier/compound-engineering-plugin/compare/cli-v3.10.0...cli-v3.11.0) (2026-06-12)
+
+
+### Features
+
+* **drift-report:** add ce-drift-report skill with read-time aggregation ([f44ffd9](https://github.com/akornmeier/compound-engineering-plugin/commit/f44ffd99a2b86710a98f0b421674cd8f7346c8b1))
+* **learning-sweep:** add headless and autonomous modes with already-swept probe ([33c7c25](https://github.com/akornmeier/compound-engineering-plugin/commit/33c7c253ebc018ae278b5e9dcecd03f152599d0b))
+* **learning-sweep:** add PR mining script with explicit state machine ([cb40a71](https://github.com/akornmeier/compound-engineering-plugin/commit/cb40a71f25dd33e675b616d4ad312cf05b6e2fd8))
+* **learning-sweep:** add report-only merged-PR learning sweep ([01fd1eb](https://github.com/akornmeier/compound-engineering-plugin/commit/01fd1eb57e7f612825f790fd62430f48be3c0da4))
+* **learning-sweep:** add staged-capture state machine and ce-compound write seam ([635f0d2](https://github.com/akornmeier/compound-engineering-plugin/commit/635f0d2aaaee431c21a81871eb90699e3bfd11aa))
+* **learning-sweep:** add tolerant corpus-scan script ([898380a](https://github.com/akornmeier/compound-engineering-plugin/commit/898380af6105f89a7964862b54e538ced1a0da90))
+* **learning-sweep:** close the capture loop and drift read edge ([217957c](https://github.com/akornmeier/compound-engineering-plugin/commit/217957c2646e04a85ab9b6285484731f5c42480d))
+* **learning-sweep:** document the merge-trigger recipe and unattended-run hygiene ([59dbb5a](https://github.com/akornmeier/compound-engineering-plugin/commit/59dbb5a2ba1ebab650e059438b0da0f8e217d4d6))
+* **learning-sweep:** emit machine-readable keeper envelope alongside the report ([c0c40f5](https://github.com/akornmeier/compound-engineering-plugin/commit/c0c40f5febf5d662950232679ffd6ce404206aa9))
+* **learning-sweep:** enforce hard re-validation gate on capture PRs ([aea3d58](https://github.com/akornmeier/compound-engineering-plugin/commit/aea3d5827d6b5e5af9e59db664b8190b6be389ce))
+* **learning-sweep:** replace per-keeper routing with batched decision and merge-on-green ([2fdfa52](https://github.com/akornmeier/compound-engineering-plugin/commit/2fdfa52ed59004d176896ce44c36867d7a790a45))
+* **plan-handoff:** persist review findings and offer fresh-session handoff ([087d3ec](https://github.com/akornmeier/compound-engineering-plugin/commit/087d3ecac9ecc4b8b1b55b3fa3f734b064da6fba))
+* **verify-work:** capture a durable drift event per probe run ([0a98b59](https://github.com/akornmeier/compound-engineering-plugin/commit/0a98b598c5f1d5127dd5200f0b5c9ab302a6f61b))
+
+
+### Bug Fixes
+
+* **learning-sweep:** exclude binary diff blocks lacking +++/--- headers ([#15](https://github.com/akornmeier/compound-engineering-plugin/issues/15)) ([d099bf3](https://github.com/akornmeier/compound-engineering-plugin/commit/d099bf36ebb7123d86a01c616bc62c48c21a2f36))
+* **review:** apply ce-code-review findings [#1](https://github.com/akornmeier/compound-engineering-plugin/issues/1)-[#15](https://github.com/akornmeier/compound-engineering-plugin/issues/15) ([ccfb41d](https://github.com/akornmeier/compound-engineering-plugin/commit/ccfb41d56bdb3cead53edc6a9ee81b80f866d75a))
+* **review:** apply code-review findings [#1](https://github.com/akornmeier/compound-engineering-plugin/issues/1)-[#5](https://github.com/akornmeier/compound-engineering-plugin/issues/5), [#7](https://github.com/akornmeier/compound-engineering-plugin/issues/7)-[#13](https://github.com/akornmeier/compound-engineering-plugin/issues/13), [#15](https://github.com/akornmeier/compound-engineering-plugin/issues/15) ([99ad198](https://github.com/akornmeier/compound-engineering-plugin/commit/99ad198b69cb5c42d3b2610f577e2b4338146e31))
+* **verify-work:** close code-review gaps in capture contract ([f93e379](https://github.com/akornmeier/compound-engineering-plugin/commit/f93e379d929cde5278e37f9614f621fe4ebaa8b5))
+
+## [3.10.0](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.9.4...cli-v3.10.0) (2026-06-03)
+
+
+### Features
+
+* **skill:** introduce CONCEPTS.md as shared vocabulary substrate ([#838](https://github.com/EveryInc/compound-engineering-plugin/issues/838)) ([7c4bb16](https://github.com/EveryInc/compound-engineering-plugin/commit/7c4bb16123412d97ded593fc785d206ecb9684bc))
+
+## [3.9.4](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.9.3...cli-v3.9.4) (2026-05-31)
+
+
+### Miscellaneous Chores
+
+* **cli:** Synchronize compound-engineering versions
+
+## [3.9.3](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.9.2...cli-v3.9.3) (2026-05-28)
+
+
+### Miscellaneous Chores
+
+* **cli:** Synchronize compound-engineering versions
+
+## [3.9.2](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.9.1...cli-v3.9.2) (2026-05-27)
+
+
+### Miscellaneous Chores
+
+* **cli:** Synchronize compound-engineering versions
+
+## [3.9.1](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.9.0...cli-v3.9.1) (2026-05-27)
+
+
+### Miscellaneous Chores
+
+* **cli:** Synchronize compound-engineering versions
+
+## [3.9.0](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.8.4...cli-v3.9.0) (2026-05-26)
+
+
+### Features
+
+* **ce-plan,ce-brainstorm:** contract-driven sections + optional HTML output ([#826](https://github.com/EveryInc/compound-engineering-plugin/issues/826)) ([11e12e5](https://github.com/EveryInc/compound-engineering-plugin/commit/11e12e5739c6691a2020eb8b70a944587e7f265f))
+
+## [3.8.4](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.8.3...cli-v3.8.4) (2026-05-21)
+
+
+### Bug Fixes
+
+* **agents:** rename .agent.md to .md for VS Code Copilot tool access ([#846](https://github.com/EveryInc/compound-engineering-plugin/issues/846)) ([796bea7](https://github.com/EveryInc/compound-engineering-plugin/commit/796bea75b74f3b101b53f7cc1c108aece0979e6b))
+
+## [3.8.3](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.8.2...cli-v3.8.3) (2026-05-17)
+
+
+### Bug Fixes
+
+* **ce-coherence-reviewer:** remove Bash from tool allowlist ([#837](https://github.com/EveryInc/compound-engineering-plugin/issues/837)) ([82b8af4](https://github.com/EveryInc/compound-engineering-plugin/commit/82b8af415d9ca5577577fa80da0a6119fc8b661e))
+
+## [3.8.2](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.8.1...cli-v3.8.2) (2026-05-14)
+
+
+### Bug Fixes
+
+* **codex:** respect CODEX_HOME for profile installs ([#830](https://github.com/EveryInc/compound-engineering-plugin/issues/830)) ([a0a08a1](https://github.com/EveryInc/compound-engineering-plugin/commit/a0a08a17cb178655baeabe4045b5164b3a5cef58))
+
+## [3.8.1](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.8.0...cli-v3.8.1) (2026-05-11)
+
+
+### Bug Fixes
+
+* **ce-code-review:** replace resolve-base.sh with prose-driven base detection ([#815](https://github.com/EveryInc/compound-engineering-plugin/issues/815)) ([d090bde](https://github.com/EveryInc/compound-engineering-plugin/commit/d090bde0ff1bbc33ec3c3b2049cb4687e9d76532))
+
+## [3.8.0](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.7.3...cli-v3.8.0) (2026-05-10)
+
+
+### Miscellaneous Chores
+
+* **cli:** Synchronize compound-engineering versions
+
+## [3.7.3](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.7.2...cli-v3.7.3) (2026-05-08)
+
+
+### Bug Fixes
+
+* **ce-resolve-pr-feedback:** paginate GraphQL connections ([#807](https://github.com/EveryInc/compound-engineering-plugin/issues/807)) ([07a6d52](https://github.com/EveryInc/compound-engineering-plugin/commit/07a6d52879ed715e179ff11daaee47e02bc6ecc9))
+
+## [3.7.2](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.7.1...cli-v3.7.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* **ce-sessions:** unblock session-history on Claude Code ([#800](https://github.com/EveryInc/compound-engineering-plugin/issues/800)) ([81710ef](https://github.com/EveryInc/compound-engineering-plugin/commit/81710efad5666831715a630b04554a35946afb1d))
+
+## [3.7.1](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.7.0...cli-v3.7.1) (2026-05-08)
+
+
+### Miscellaneous Chores
+
+* **cli:** Synchronize compound-engineering versions
+
+## [3.7.0](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.6.1...cli-v3.7.0) (2026-05-07)
+
+
+### Miscellaneous Chores
+
+* **cli:** Synchronize compound-engineering versions
+
+## [3.6.1](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.6.0...cli-v3.6.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* **doc-review:** cut review noise on plans, scope personas to doc shape ([#780](https://github.com/EveryInc/compound-engineering-plugin/issues/780)) ([8349e75](https://github.com/EveryInc/compound-engineering-plugin/commit/8349e750b856d267b74fbbeb2fb135e4ff73eb91))
+
+## [3.6.0](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.5.0...cli-v3.6.0) (2026-05-05)
+
+
+### Features
+
+* convert hooks to .codex/hooks.json for Codex target ([#742](https://github.com/EveryInc/compound-engineering-plugin/issues/742)) ([60b66dd](https://github.com/EveryInc/compound-engineering-plugin/commit/60b66dd904c3a81e0a25dd3bc61e2d94d8837f86))
+
+
+### Bug Fixes
+
+* **ce-plan:** render Implementation Units as headings, not bulleted list items ([#766](https://github.com/EveryInc/compound-engineering-plugin/issues/766)) ([be2efd7](https://github.com/EveryInc/compound-engineering-plugin/commit/be2efd7d7605c483ea9f068c6190b81a9d68e942))
+* **ce-worktree:** resolve script path against skill dir, not user CWD ([#772](https://github.com/EveryInc/compound-engineering-plugin/issues/772)) ([4cc1ee6](https://github.com/EveryInc/compound-engineering-plugin/commit/4cc1ee6fe2a353cd0b8e7466ec27e9556b042ee3))
+
+## [3.5.0](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.4.2...cli-v3.5.0) (2026-05-04)
+
+
+### Features
+
+* **riffrec-feedback-analysis:** add Riffrec feedback skill with three-path routing ([#747](https://github.com/EveryInc/compound-engineering-plugin/issues/747)) ([dde9256](https://github.com/EveryInc/compound-engineering-plugin/commit/dde9256362db90606d052c662dc8f2f0ae6b620b))
+
+## [3.4.2](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.4.1...cli-v3.4.2) (2026-05-04)
+
+
+### Bug Fixes
+
+* **ce-code-review:** keep finding numbers stable ([#754](https://github.com/EveryInc/compound-engineering-plugin/issues/754)) ([e856756](https://github.com/EveryInc/compound-engineering-plugin/commit/e8567566b7ed779ea1964d6ffe97e8cb4ca79d73))
+* **ce-compound, ce-sessions:** remove bash parameter expansion from ! backtick  ([#752](https://github.com/EveryInc/compound-engineering-plugin/issues/752)) ([9539bf0](https://github.com/EveryInc/compound-engineering-plugin/commit/9539bf045deba099a20d306b2b118e3b019c633c))
+
 ## [3.4.1](https://github.com/EveryInc/compound-engineering-plugin/compare/cli-v3.4.0...cli-v3.4.1) (2026-05-01)
 
 

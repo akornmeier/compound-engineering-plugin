@@ -106,6 +106,7 @@ Use fully-qualified agent names inside Task calls.
 - `ce-learnings-researcher` for institutional knowledge and past solved problems
 - `ce-framework-docs-researcher` for official framework or library behavior
 - `ce-best-practices-researcher` for current external patterns and industry guidance
+- `ce-web-researcher` for landscape/prior-art gaps — competitor patterns, market signals, or an unsettled external option set (which library/provider/approach) that recommendations depend on
 - Add `ce-git-history-analyzer` only when historical rationale or prior art is materially missing
 
 **Key Technical Decisions**
@@ -132,8 +133,7 @@ Use fully-qualified agent names inside Task calls.
 **Risks & Dependencies / Operational Notes**
 - Use the specialist that matches the actual risk:
   - `ce-security-sentinel` for security, auth, privacy, and exploit risk
-  - `ce-data-integrity-guardian` for persistent data safety, constraints, and transaction boundaries
-  - `ce-data-migration-expert` for migration realism, backfills, and production data transformation risk
+  - `ce-data-integrity-guardian` for migrations, backfills, persistent data safety, constraints, transaction boundaries, and production data transformation risk (plan context — not the PR-review `ce-data-migration-reviewer` persona)
   - `ce-deployment-verification-agent` for rollout checklists, rollback planning, and launch verification
   - `ce-performance-oracle` for capacity, latency, and scaling concerns
 

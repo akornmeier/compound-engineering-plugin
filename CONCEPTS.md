@@ -1,0 +1,101 @@
+# Concepts
+
+Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
+
+## The plugin and its parts
+
+### Plugin
+A distributable bundle of Skills, Agents, Commands, and Hooks (optionally MCP servers) described by a single manifest and installed into a coding-agent platform as one unit — the artifact the Converter translates for non-Claude Targets and the Marketplace distributes.
+
+### Skill
+A slash-invoked capability defined in its own directory, and the primary entry point a user reaches for. A Skill orchestrates: it can progressively pull in its own reference files as needed and dispatch Agents to do scoped work. Distinct from an Agent in that a Skill is user-invoked and coordinates, whereas an Agent is dispatched by a Skill.
+
+### Agent
+A specialized, single-purpose worker a Skill dispatches to run in its own isolated context and return a result, rather than to converse with the user. Also called a subagent. Agents are not invoked directly by users; a Skill decides when and how many to run.
+
+## Conversion
+
+### Target
+A destination coding-agent platform other than Claude Code (OpenCode, Codex, Gemini, and others) that a Plugin is converted into and installed onto, each with its own file layout and capability mapping. Also called a target provider.
+
+A Plugin is installed to a Target at one of two scopes: global (user-wide) or per-workspace.
+
+### Converter
+The step that transforms a parsed Plugin into one Target's in-memory form, mapping tools, permissions, hooks, and model names explicitly rather than by convention.
+
+### Writer
+The step that emits a Target's converted Bundle onto disk, in that Target's expected paths and merge semantics. Paired with a Converter, one per Target.
+
+### Bundle
+The in-memory converted form of a Plugin for a single Target — the handoff a Converter produces and a Writer consumes.
+
+### Marketplace
+The catalog metadata listing installable plugins and their versions for distribution, kept consistent with each Plugin's manifest by release validation.
+
+## Compound engineering
+
+### Compound engineering
+The methodology this project embodies: structure engineering work so each unit makes the next one easier, capturing reusable knowledge as you go so the toolset gets smarter with every use.
+
+### Pipeline
+The chained progression of Skills that carries a piece of work from strategy and ideation through brainstorm, plan, execution, and review, and closes by capturing what was learned. Each stage hands a durable artifact to the next, and research is gathered at the stage that needs it rather than re-gathered downstream.
+
+### Learning
+A documented solution to a past problem — a bug fix, a convention, or a workflow pattern — stored as the unit of compounded knowledge so future work can find and reuse it. Also called a solution doc. Carries structured metadata (category, tags, problem type) for retrieval; its creation date lives in the entry, not the filename.
+
+### Pattern doc
+Guidance generalized from several Learnings into a broader rule. Higher-leverage than any single incident-level Learning, and higher-risk when stale, because future work treats it as broadly applicable.
+
+### Learning sweep
+A report-only, generate-and-filter pass over one merged PR — its diff, commit messages, and review threads — that proposes candidate Learnings without writing any. Candidates are deduped within the batch, checked against the existing store, gated by **Confidence anchor**, and reported with a **Corpus verdict**; keepers are routed through the normal capture path by hand, so `ce-compound` remains the only writer.
+
+### Corpus verdict
+The three-way classification a **Learning sweep** assigns each candidate against the existing store: new (nothing covers it), already-documented (fully covered — marked as such, never re-proposed), or overlaps-existing (partially covered — names the overlapping doc and flags it as an extend candidate). Never collapsed to two values; the middle state is what distinguishes "extend an existing Learning" from both "write a new one" and "do nothing."
+
+## Review and workflow vocabulary
+
+### Reviewer persona
+A single-lens reviewer Agent that evaluates work from one specific perspective — security, correctness, scope, design, and so on. Review Skills dispatch a panel of personas and merge their findings.
+
+### Confidence anchor
+A discrete, self-scored confidence value on a fixed small scale, each level tied to a behavioral criterion the model can honestly apply, used to gate and rank findings — review findings, or candidate Learnings in a Learning sweep — instead of a continuous score that invites false precision. Each review Skill sets its own actionable threshold; corroboration across personas promotes a finding by one level.
+
+### Autofix class
+The classification of a review finding by how safely its proposed fix can be applied: applied silently, applied only after user confirmation, left for a human to resolve, or recorded as advisory with no action.
+
+### Headless mode
+An explicit opt-in mode that runs a Skill unattended, with no user prompts — it produces a written report as its deliverable and conservatively defers genuinely ambiguous decisions rather than guessing.
+
+### Beta skill
+A parallel copy of a stable Skill, suffixed `-beta`, used to trial a new version alongside the stable one without disrupting users. Invoked manually (model auto-invocation is disabled); promoting it to stable is an orchestration change, not just a rename — every caller must move in the same change so none silently inherits stale defaults.
+
+## Dynamic workflows
+
+### Dynamic workflow
+A Claude-Code-only background orchestration script a Skill hands to the Workflow tool, which fans out Agents and runs deterministic logic in an isolated runtime and returns only a final structured envelope — so the Skill's own context never carries the intermediate work. Used to move fan-out-heavy Skill steps off the main conversation; unavailable on non-Claude Targets, so a Skill that uses one keeps a non-workflow fallback path behind an availability guard.
+
+### Live boundary
+The line between what static tests can verify about a Dynamic workflow and what only the real runtime enforces. The contracts on its far side — how arguments arrive, how a file's contents reach a runtime that cannot read files, which agent identifiers and output schemas the runtime accepts, whether dispatch failures surface — pass every static test yet can fail the first live run, so a mandatory live smoke run is the only gate that proves them.
+
+### Prose fallback
+The non-workflow execution path a Skill runs when the Workflow tool is unavailable — on non-Claude Targets (Codex, Gemini, etc.) or in contexts where the Workflow tool has not been invoked. A Skill that uses a Dynamic workflow must keep a prose fallback behind an availability guard so it remains functional after conversion. When the fallback must produce the same numeric or categorical output as the workflow path, the fallback cites the canonical module's rules verbatim rather than improvising.
+
+### Drift event
+A durable, per-run record of one `ce-verify-work` reading — the cited drifted and attempted Implementation-Unit lists for a single plan, committed under `docs/drift-events/`. The capture half of the rework/churn loop: each qualifying probe run persists what it found, so the **Drift rate** can be derived at read time by aggregating across many events, never stored as a number. Produced by the `ce-verify-work` probe, which classifies via a **Dynamic workflow** on Claude Code. Distinct from a **Learning** — a drift event is machine telemetry, not human institutional knowledge, and deliberately lives outside `docs/solutions/`.
+
+## The loop system
+
+### Loop
+A compounding workflow expressed as a self-running cycle rather than a sequence of human-invoked Skills — the capture loop (merged work → sweep → keep/reject → corpus → richer verdicts), the drift loop (plan → work → probe → drift events → aggregation), the review loop (change → review → fix → triage → ship). Each loop names its **Judgment points**; in default mode the system prompts the human at each, and an explicit per-run autonomous parameter lets the loop's pre-committed gate stand in instead — opt-in, never inherited, with a reviewable record of what the gate decided.
+
+### Judgment point
+A named decision moment inside a **Loop** where default mode stops and prompts the human. The irreversible-commit gates — corpus entry in the capture loop, the ship call in the review loop — are judgment points the human holds by default; everything on either side of the decision (drafting, context handoff, executing the approved action) belongs to the system, not the human.
+
+### Edge graduation
+The lifecycle by which one edge of a **Loop** moves from manual to automatic: report-only first, then a pre-committed signal-gate experiment (ADR 0001 — bar fixed before the first run), and automation only after the gate passes. The capture loop's trigger and write-execution edges graduated via the five-PR experiment; an edge that has not passed its gate stays manual no matter how plausible its automation looks.
+
+### Capture PR
+The staged-proposal pull request the capture loop's write edge produces: approved keepers written by `ce-compound` onto a branch (prefixed `learning-capture/`, labeled `learning-capture`) as proposed Learnings, with merge constituting corpus entry. Staged writes are proposals, not corpus entries, until merged. Capture PRs are excluded from sweep triggers (a sweep never sweeps its own output), and a closed-unmerged capture PR is a durable rejection record that suppresses re-proposal on triggered runs.
+
+### Autonomous mode
+An explicit per-run opt-in (`mode:autonomous`) where a **Loop** traverses its **Judgment points** using the pre-committed gate instead of prompting the human, leaving a reviewable record of every decision the gate made. Distinct from **Headless mode**: headless defers judgment (stages and waits for the human); autonomous decides and acts. Never inherited — pairing autonomy with an automated trigger requires deliberate configuration, and the mode is not recommended until its agreement gate (an **Edge graduation** experiment) passes.

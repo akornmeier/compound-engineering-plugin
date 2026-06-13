@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ce-verify-work per-unit verdict",
+  "description": "Structured output contract for one Implementation Unit's classification. Classifier agents (and the prose fallback) emit one of these per unit; the deterministic roll-up consumes them. The verdict enum is the single source of truth shared with drift-rollup.js (a consistency test guards the two against drift).",
+  "type": "object",
+  "required": ["u_id", "verdict", "rationale"],
+  "additionalProperties": false,
+  "properties": {
+    "u_id": {
+      "type": "string",
+      "description": "The unit's U-ID, verbatim from the plan heading (e.g. 'U3'). Never renumbered."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["done", "remaining", "drifted", "unverifiable"],
+      "description": "done = Files present and Verification satisfied by current repo state. remaining = no git evidence the unit was attempted (no commit touched its declared paths) — progress, not rework. drifted = a commit touched the unit's declared Files but the repo diverged (Verification unmet, Files partial/deleted) — rework-shaped. unverifiable = the Verification is intrinsically behavioral/runtime and cannot be settled from static repo state. A statically-checkable unit is NEVER unverifiable."
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Cited artifacts anchoring the verdict: commit SHAs, repo-relative file paths, diff-hunk references. Non-empty and REQUIRED for done and drifted (drifted cites both the attempt evidence and the divergence). Optional for remaining and unverifiable."
+    },
+    "rationale": {
+      "type": "string",
+      "description": "One sentence on why this verdict holds. For unverifiable, name the behavioral/runtime criterion that blocks static settlement."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verdict": { "enum": ["done", "drifted"] } } },
+      "then": {
+        "required": ["evidence"],
+        "properties": { "evidence": { "minItems": 1 } }
+      }
+    }
+  ]
+}

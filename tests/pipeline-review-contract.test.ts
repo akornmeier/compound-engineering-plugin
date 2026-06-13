@@ -17,21 +17,24 @@ describe("ce-work review contract", () => {
     expect(content).not.toContain("Consider Code Review")
     expect(content).not.toContain("Code Review** (Optional)")
 
-    // Phase 3 has a Claude-Code-only Simplify step at position 2 (gated on >=30 LOC)
-    // and a mandatory code review at position 3
+    // Phase 3 has a conditional Simplify step at position 2 (ce-simplify-code, gated on >=30 LOC)
+    // and code review at position 3 (Tier 1 when available; Tier 2 on criteria only)
     expect(shipping).toContain("2. **Simplify**")
-    expect(shipping).toContain("Claude Code only")
+    expect(shipping).toContain("ce-simplify-code")
     expect(shipping).toContain("3. **Code Review**")
 
-    // Two-tier rubric in reference file: Tier 1 is harness-native (default),
-    // Tier 2 is ce-code-review (risk-based escalation)
-    expect(shipping).toContain("**Tier 1 -- harness-native code review (default).**")
-    expect(shipping).toContain("**Tier 2 -- `ce-code-review` (escalation).**")
+    // Two-tier rubric in reference file: Tier 1 when harness has built-in review,
+    // Tier 2 is ce-code-review (risk-based escalation only — not when Tier 1 missing)
+    expect(shipping).toContain("**Tier 1 -- harness-native review")
+    expect(shipping).toContain("**Tier 2 -- `ce-code-review` (escalation only).**")
+    expect(shipping).toContain("not** because Tier 1 is missing")
     expect(shipping).toContain("ce-code-review")
-    expect(shipping).toContain("mode:autofix")
+    expect(shipping).toContain("review-findings-followup.md")
+    expect(shipping).toMatch(/review is not fix|2a\. Review|2b\. Apply/i)
+    expect(shipping).toContain("mode:agent")
 
     // Quality checklist includes review
-    expect(shipping).toContain("Code review completed (Tier 1 harness-native or Tier 2 `ce-code-review`)")
+    expect(shipping).toContain("Code review: Tier 1 completed, or Tier 2 when escalated")
   })
 
   test("delegates commit and PR to dedicated skills", async () => {
@@ -62,6 +65,21 @@ describe("ce-work review contract", () => {
     // Negative assertions stay on SKILL.md
     expect(beta).not.toContain("Consider Code Review")
     expect(beta).not.toContain("gh pr create")
+  })
+
+  test("ce-work-beta mirrors residual work gate sentinel with ce-work", async () => {
+    const workShipping = await readRepoFile(
+      "plugins/compound-engineering/skills/ce-work/references/shipping-workflow.md",
+    )
+    const betaShipping = await readRepoFile(
+      "plugins/compound-engineering/skills/ce-work-beta/references/shipping-workflow.md",
+    )
+
+    expect(workShipping).toContain("Actionable findings: none.")
+    expect(betaShipping).toContain("Actionable findings: none.")
+    expect(betaShipping).not.toContain("Residual actionable work: none.")
+    expect(betaShipping).toContain("not yet fixed")
+    expect(betaShipping).not.toContain("skill did not auto-fix")
   })
 
   test("includes per-task testing deliberation in execution loop", async () => {
@@ -286,8 +304,10 @@ describe("ce-brainstorm review contract", () => {
     // Document review is no longer a forced Phase 3.5 step. Users opt in from the Phase 4 menu.
     expect(content).not.toContain("Phase 3.5")
 
-    // Phase 3 and Phase 4 are extracted to references for token optimization
-    expect(content).toContain("`references/requirements-capture.md`")
+    // Phase 3 and Phase 4 are extracted to references for token optimization.
+    // Phase 3 now points at brainstorm-sections.md (content contract) plus a
+    // format-rendering ref; Phase 4 points at handoff.md.
+    expect(content).toContain("`references/brainstorm-sections.md`")
     expect(content).toContain("`references/handoff.md`")
 
     // Phase 4 menu exposes agent review as a first-class option and routes to ce-doc-review
@@ -336,24 +356,42 @@ describe("ce-plan review contract", () => {
     expect(content).toContain("Document review is mandatory")
   })
 
-  test("uses headless mode in pipeline context", async () => {
+  test("uses headless mode by default and in pipeline context", async () => {
     const content = await readRepoFile("plugins/compound-engineering/skills/ce-plan/references/plan-handoff.md")
 
-    // Pipeline mode runs document-review headlessly, not skipping it
+    // Default at Phase 5.3.8 is `mode:headless` so users opt into deeper interactive review
+    // explicitly from the post-generation menu rather than being forced through it.
     expect(content).toContain("ce-doc-review` with `mode:headless`")
     expect(content).not.toContain("skip document-review and return control")
+
+    // The interactive walkthrough is opt-in via the post-generation menu, not automatic
+    expect(content).toContain("Run deeper doc review")
   })
 
-  test("handoff options recommend ce-work after review", async () => {
+  test("handoff options expose deeper-review opt-in alongside ce-work", async () => {
     const content = await readRepoFile("plugins/compound-engineering/skills/ce-plan/references/plan-handoff.md")
 
-    // ce-work is recommended (review already happened)
-    expect(content).toContain("**Start `/ce-work`** (recommended) - Begin implementing this plan in the current session")
+    // ce-work remains the lead next-stage action, now split into same-session
+    // and fresh-session routes (R14 handoff hygiene); recommendation is
+    // conditional on whether the session already ran prior pipeline stages.
+    expect(content).toContain("**Start `/ce-work` here (same session)**")
+    expect(content).toContain("**Hand off to a fresh session**")
 
-    // Additional review passes are surfaced contextually (not as a menu fixture) and still
-    // route through the ce-doc-review skill when requested
-    expect(content).toContain("Surface additional document review contextually")
-    expect(content).toContain("Load the `ce-doc-review` skill")
+    // Deeper review is a first-class menu fixture so users can engage with surfaced findings
+    // without relying on free-form prompting; routed through ce-doc-review without headless mode.
+    expect(content).toContain("**Run deeper doc review**")
+    expect(content).toContain("`ce-doc-review`")
+    expect(content).toContain("without** `mode:headless`")
+
+    // Deeper-review menu fixture is hidden when no actionable findings remain so the menu
+    // collapses back to a 4-option AskUserQuestion-friendly shape on Claude Code. FYI-only
+    // state also hides the option since ce-doc-review's walkthrough is gated to actionable
+    // findings (anchor 75/100, gated_auto/manual) and FYIs (anchor 50) bypass it.
+    expect(content).toContain("Hide `Run deeper doc review` when no actionable findings remain")
+    expect(content).toContain("proposed_fixes_count + decisions_count > 0")
+
+    // Summary line above the menu surfaces autofix counts and remaining-bucket counts
+    expect(content).toContain("Summary line above the menu")
 
     // No conditional ordering based on plan depth (review already ran)
     expect(content).not.toContain("**Options when ce-doc-review is recommended:**")
@@ -653,7 +691,7 @@ describe("ce-compound frontmatter schema expansion contract", () => {
 describe("ce-learnings-researcher domain-agnostic contract", () => {
   test("agent prompt frames as domain-agnostic not bug-focused", async () => {
     const agent = await readRepoFile(
-      "plugins/compound-engineering/agents/ce-learnings-researcher.agent.md"
+      "plugins/compound-engineering/agents/ce-learnings-researcher.md"
     )
 
     // Domain-agnostic identity framing
