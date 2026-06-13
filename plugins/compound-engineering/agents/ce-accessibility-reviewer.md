@@ -41,8 +41,8 @@ Organize by POUR (Perceivable / Operable / Understandable / Robust). Cite the WC
 - **Keyboard inaccessible** (2.1.1): controls reachable only by mouse — `onclick` on a `div` without keyboard handlers and `role`/`tabindex`; custom widgets that swallow Tab.
 - **Focus traps** (2.1.2): modal/dialog that doesn't return focus on close; infinite focus cycles; focus jumps that lose place.
 - **Focus not visible** (2.4.7): `outline: none` without a replacement focus indicator; focus indicator under 3:1 contrast.
-- **Touch target size** (2.5.5/2.5.8): interactive controls under 24x24 CSS px (2.2 AA) or 44x44 (best practice on touch devices).
-- **No reduced-motion handling** (2.3.3): animations, parallax, or auto-rotating content without `@media (prefers-reduced-motion: reduce)` fallback.
+- **Touch target size** (2.5.8 AA): interactive controls under 24×24 CSS px; for 44×44 CSS px see 2.5.5 (AAA/best practice on touch devices).
+- **No reduced-motion handling** (2.3.3, AAA/best practice): animations, parallax, or auto-rotating content without `@media (prefers-reduced-motion: reduce)` fallback.
 
 ### Understandable
 
