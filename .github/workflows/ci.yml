@@ -37,6 +37,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Full history: the revalidation-gate CI-wiring test runs the
+          # staged-capture validator against the repo on learning-capture/*
+          # PRs, which needs `git merge-base HEAD origin/main`. A shallow
+          # clone has no common ancestor and the gate hard-exits 2.
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
