@@ -9,6 +9,19 @@ All notable changes to the compound-engineering plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.0](https://github.com/akornmeier/compound-engineering-plugin/compare/compound-engineering-v3.11.0...compound-engineering-v3.12.0) (2026-06-13)
+
+
+### Features
+
+* **agents:** add ce-accessibility-reviewer and ce-incident-commander; extend four agents ([54e1ee5](https://github.com/akornmeier/compound-engineering-plugin/commit/54e1ee5b869e0e3eb90550f8674c37aa2a6726f9))
+
+
+### Bug Fixes
+
+* **accessibility-reviewer:** annotate WCAG conformance levels to avoid miscalibrated findings ([#24](https://github.com/akornmeier/compound-engineering-plugin/issues/24)) ([6ae1c97](https://github.com/akornmeier/compound-engineering-plugin/commit/6ae1c9794a82a12de9d9506a8956ee1812dd2105))
+* **agents:** rename new agents to .md to restore VS Code Copilot tool access ([722b26a](https://github.com/akornmeier/compound-engineering-plugin/commit/722b26a0b27964335c398e376f60960b963765f3))
+
 ## [3.11.0](https://github.com/akornmeier/compound-engineering-plugin/compare/compound-engineering-v3.10.0...compound-engineering-v3.11.0) (2026-06-12)
 
 
