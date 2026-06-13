@@ -95,7 +95,7 @@ describe("normalizeVerdict — named confidence threshold boundary", () => {
   })
 
   test("a verdict JUST BELOW the threshold coerces to stale", () => {
-    const below = AMBIGUITY_CONFIDENCE_THRESHOLD === 75 ? 50 : AMBIGUITY_CONFIDENCE_THRESHOLD - 25
+    const below = AMBIGUITY_CONFIDENCE_THRESHOLD - 25 // the adjacent lower anchor (75 -> 50)
     const n = normalizeVerdict(DOC({ verdict: "Update", confidence: below }))
     expect(n.verdict).toBe("stale")
     expect(n.coerced_from).toBe("Update")
