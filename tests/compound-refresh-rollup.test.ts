@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-// @ts-ignore — pure JS module, no type declarations
 import {
   normalizeVerdict,
   rollupClassifications,
@@ -106,6 +105,14 @@ describe("normalizeVerdict — named confidence threshold boundary", () => {
     expect(n.verdict).toBe("Keep")
     expect(n.coerced_from).toBeNull()
   })
+
+  test("a stale input at low confidence passes through unchanged (not re-coerced)", () => {
+    // The `verdict !== "stale"` guard: an already-stale verdict must not accumulate
+    // a coerced_from, which would wrongly inflate the coerced count.
+    const n = normalizeVerdict(DOC({ verdict: "stale", confidence: 25 }))
+    expect(n.verdict).toBe("stale")
+    expect(n.coerced_from).toBeNull()
+  })
 })
 
 describe("normalizeVerdict — failed/malformed classifier entries (R6)", () => {
@@ -165,6 +172,21 @@ describe("rollupClassifications — fail-closed degraded handling (R6)", () => {
     expect(rolled.counts.coerced).toBe(1)
     expect(rolled.counts.stale).toBe(1)
     expect(rolled.counts.Delete).toBe(0)
+  })
+
+  test("a malformed (dropped) entry forces degraded status, not a silent complete (fail-closed)", () => {
+    // A dropped entry is in NO group and has no usable path; if it did not force
+    // degraded, the run would read "complete" while a doc went unprocessed.
+    const rolled = rollupClassifications(
+      [
+        DOC({ path: "docs/solutions/a.md", verdict: "Keep" }),
+        { path: "docs/solutions/bad.md", verdict: "Frobnicate", confidence: 100 },
+      ],
+      { solutionsFileCount: 2 },
+    )
+    expect(rolled.counts.dropped).toBe(1)
+    expect(rolled.status).toBe("degraded")
+    expect(rolled.grouped.Keep).toEqual(["docs/solutions/a.md"])
   })
 })
 
@@ -237,6 +259,32 @@ describe("buildClusters — cluster-bounded contradiction grouping (KTD6)", () =
     expect(clusters.flat()).not.toContain("docs/solutions/failed.md")
     expect(singletons).not.toContain("docs/solutions/failed.md")
   })
+
+  test("with no module, entries cluster by problem_type (key-precedence fallback)", () => {
+    const { clusters, singletons } = buildClusters([
+      { path: "docs/solutions/p1.md", verdict: "Keep", module: "", tags: [], problem_type: "logic_error" },
+      { path: "docs/solutions/p2.md", verdict: "Update", module: "", tags: [], problem_type: "logic_error" },
+    ])
+    expect(clusters).toEqual([["docs/solutions/p1.md", "docs/solutions/p2.md"]])
+    expect(singletons).toEqual([])
+  })
+
+  test("with no module or problem_type, entries cluster by their first sorted tag", () => {
+    const { clusters } = buildClusters([
+      { path: "docs/solutions/t1.md", verdict: "Keep", module: "", tags: ["zebra", "alpha"], problem_type: "" },
+      { path: "docs/solutions/t2.md", verdict: "Keep", module: "", tags: ["alpha", "beta"], problem_type: "" },
+    ])
+    expect(clusters).toEqual([["docs/solutions/t1.md", "docs/solutions/t2.md"]]) // both key on tag "alpha"
+  })
+
+  test("entries with no module/problem_type/tags become singletons (null key)", () => {
+    const { clusters, singletons } = buildClusters([
+      { path: "docs/solutions/lone1.md", verdict: "Keep", module: "", tags: [], problem_type: "" },
+      { path: "docs/solutions/lone2.md", verdict: "Keep", module: "", tags: [], problem_type: "" },
+    ])
+    expect(clusters).toEqual([])
+    expect(singletons).toEqual(["docs/solutions/lone1.md", "docs/solutions/lone2.md"])
+  })
 })
 
 describe("contradictionTermination — loop-until-dry predicate (R3, KTD5)", () => {
@@ -257,6 +305,15 @@ describe("contradictionTermination — loop-until-dry predicate (R3, KTD5)", () 
     const out = contradictionTermination({ rounds: CONTRADICTION_CAP, dry_count: 0, found_new: true, round_failed: false })
     expect(out.action).toBe("done")
     expect(out.status).toBe("degraded")
+  })
+
+  test("a failed round at the hard cap returns done/degraded with the dry counter reset", () => {
+    // Distinct decision-table case from found_new-at-cap: round_failed resets
+    // dry_count to 0 first, THEN the rounds >= cap branch fires.
+    const out = contradictionTermination({ rounds: CONTRADICTION_CAP, dry_count: 1, found_new: false, round_failed: true })
+    expect(out.action).toBe("done")
+    expect(out.status).toBe("degraded")
+    expect(out.dry_count).toBe(0)
   })
 
   test("a failed round never increments the dry counter (fail-closed)", () => {

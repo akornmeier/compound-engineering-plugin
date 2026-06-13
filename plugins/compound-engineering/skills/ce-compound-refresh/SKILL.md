@@ -314,9 +314,11 @@ The workflow is **side-effect-free** — it classifies and recommends; this orch
    - `scope_hint` — the scope hint from `$ARGUMENTS`, or omit.
 5. The workflow returns the envelope: `status`, `solutions_file_count`, `verdicts`, `grouped`, `contradictions`, `counts`, `today`, `artifact_path`, `run_id`. Apply it centrally:
    - **Copy `grouped` verbatim** — the verdict-grouped path lists are produced deterministically by `classify-rollup.js`; do not re-derive groups from the flat `verdicts` list. Apply the central writes per group: `grouped.Update` (read each doc's `artifact_path` analysis for the exact edits), `grouped.Consolidate`, `grouped.Delete`, and `grouped.stale` (add `status: stale`, `stale_reason`, `stale_date: <today>`).
+   - **Treat `grouped.unverifiable` like `stale`, never like `Keep`** — those docs had a failed classifier, so they were never actually reviewed. Stale-mark each (`status: stale`, `stale_reason: classifier failed — re-review`, `stale_date: <today>`) or re-review it, so a verification failure is a visible action, not a silent no-op (R6).
    - **Replace authoring stays sequential and orchestrator-side** — for each path in `grouped.Replace`, dispatch one replacement subagent at a time (the existing "replacement subagents run one at a time" rule).
    - **Resolve `contradictions`** through Consolidate or targeted Update/Replace, per Phase 1.75.
-   - If `status` is `degraded`, a classifier failed or the contradiction pass hit its cap — surface `counts.failed_classifiers` and that the envelope covers fewer docs than `solutions_file_count`; never read a degraded run as "all Keep / no contradictions."
+   - **Reconcile coverage.** The grouped lists cover `verdicts.length` docs; `counts.dropped` docs returned malformed output and are in NO group (their path was unusable). If `verdicts.length + counts.dropped` is less than the in-scope count, or `counts.dropped > 0`, some docs went unprocessed — surface them and do not report the run as covering the whole corpus.
+   - If `status` is `degraded` (a classifier failed, a return was dropped, or the contradiction pass hit its cap), surface `counts.failed_classifiers` and `counts.dropped` and that the envelope covers fewer docs than `solutions_file_count`; never read a degraded run as "all Keep / no contradictions."
 
 After applying the envelope, continue with **Phase 4.5 (Vocabulary Capture)** and **Phase 5 (Commit)** as usual — the workflow replaces only the classification + contradiction investigation, not the downstream phases.
 

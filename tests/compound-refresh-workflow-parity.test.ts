@@ -10,7 +10,6 @@ import { transformContentForCodex } from "../src/utils/codex-content"
 import { transformSkillContentForOpenCode } from "../src/converters/claude-to-opencode"
 import { parseFrontmatter } from "../src/utils/frontmatter"
 import { copySkillDir } from "../src/utils/files"
-// @ts-ignore — pure JS module, no type declarations
 import {
   AMBIGUITY_CONFIDENCE_THRESHOLD,
   CONTRADICTION_K,

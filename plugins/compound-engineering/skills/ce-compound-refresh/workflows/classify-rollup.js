@@ -25,9 +25,6 @@
 // The five maintenance actions a classifier may emit, plus `stale` (the
 // fail-safe verdict). Capitalized exactly as the SKILL.md taxonomy names them.
 const CLASSIFIER_VERDICTS = new Set(["Keep", "Update", "Consolidate", "Replace", "Delete", "stale"]);
-// Destructive verdicts: they delete or rewrite a doc, so they are gated. On
-// ambiguity (or insufficient evidence) they coerce to `stale` (R5).
-const DESTRUCTIVE = new Set(["Consolidate", "Replace", "Delete"]);
 // Confidence anchors the classifier may report (the inline agent() schema pins
 // this enum — KTD8). A continuous 0-100 free integer is intentionally NOT used:
 // anchors are the proven structured-output shape and make the threshold total.
@@ -172,9 +169,12 @@ function rollupClassifications(rawVerdicts, options = {}) {
     grouped[g] = verdicts.filter((v) => v.verdict === g).map((v) => v.path);
   }
 
-  // Any failed classifier makes the classification degraded — a degraded run is
-  // never read as "everything Keep / no problems" (R6).
-  const status = counts.unverifiable > 0 ? "degraded" : "complete";
+  // Fail-closed (R6): a failed classifier (unverifiable) OR a malformed/dropped
+  // return makes the run degraded — either way a doc was NOT cleanly classified,
+  // so it is unprocessed. A dropped entry has no usable path and cannot enter a
+  // group, so forcing degraded is the only signal that the envelope covers fewer
+  // docs than were in scope. A degraded run is never read as "everything Keep."
+  const status = counts.unverifiable > 0 || counts.dropped > 0 ? "degraded" : "complete";
 
   return { status, solutions_file_count, verdicts, grouped, counts };
 }

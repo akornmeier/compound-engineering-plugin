@@ -1,7 +1,6 @@
 import path from "node:path"
 import { existsSync } from "node:fs"
 import { describe, expect, test } from "bun:test"
-// @ts-ignore — pure JS module, no type declarations
 import {
   normalizeVerdict,
   rollupClassifications,
