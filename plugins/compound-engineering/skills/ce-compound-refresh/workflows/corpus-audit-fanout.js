@@ -182,9 +182,17 @@ function contradictionPrompt(clusterPaths, round, known) {
     .join("\n");
 }
 
+// Sorted doc-pair, ignoring dimension. The PAIR is the unit of "a contradiction"
+// for loop termination — two docs either contradict or they don't; the dimension
+// is a facet, not a separate problem.
+function contradictionPairKey(c) {
+  return [String(c.doc_a || ""), String(c.doc_b || "")].sort().join("|");
+}
+
+// Pair + dimension. Used only to exact-dedup the REPORT, so the same facet
+// reported twice across rounds is not double-listed.
 function contradictionKey(c) {
-  const pair = [String(c.doc_a || ""), String(c.doc_b || "")].sort();
-  return pair.join("|") + "::" + String(c.dimension || "");
+  return contradictionPairKey(c) + "::" + String(c.dimension || "");
 }
 
 // ---- classify --------------------------------------------------------------
@@ -221,7 +229,8 @@ phase("Contradictions");
 
 const { clusters, singletons } = buildClusters(rolled.verdicts);
 const contradictions = [];
-const seen = new Set();
+const seen = new Set(); // (pair + dimension) — exact-dedups the report
+const seenPairs = new Set(); // (pair only) — drives loop termination
 let dry_count = 0;
 let rounds = 0;
 let contradictionDegraded = false;
@@ -248,14 +257,22 @@ while (clusters.length > 0) {
   );
 
   const round_failed = roundResults.some((r) => !r.ok);
+  // found_new drives termination off newly-discovered PAIRS, not new facets of a
+  // known pair: a round that only enumerates more dimensions of an already-seen
+  // contradiction is "dry" (discovery has converged), so a thorough classifier is
+  // not penalized into a never-quiescent (degraded) loop. All facets are still
+  // collected for the report.
   let found_new = false;
   for (const r of roundResults) {
     for (const c of r.contradictions) {
       if (!c || typeof c.doc_a !== "string" || typeof c.doc_b !== "string") continue;
       const key = contradictionKey(c);
-      if (!seen.has(key)) {
-        seen.add(key);
-        contradictions.push({ doc_a: c.doc_a, doc_b: c.doc_b, dimension: typeof c.dimension === "string" ? c.dimension : "", summary: typeof c.summary === "string" ? c.summary : "" });
+      if (seen.has(key)) continue;
+      seen.add(key);
+      contradictions.push({ doc_a: c.doc_a, doc_b: c.doc_b, dimension: typeof c.dimension === "string" ? c.dimension : "", summary: typeof c.summary === "string" ? c.summary : "" });
+      const pairKey = contradictionPairKey(c);
+      if (!seenPairs.has(pairKey)) {
+        seenPairs.add(pairKey);
         found_new = true;
       }
     }

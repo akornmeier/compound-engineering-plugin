@@ -130,7 +130,38 @@ describe("safety-coercion control — the module never lets a destructive verdic
 //   - across the N trials, the unambiguous docs (clear-keep, the two cache docs)
 //     hold stable verdict classes.
 //
-// RECORDED — PENDING. The static layer above is green; the live dispatch is the
-// remaining mandatory acceptance step (billable multi-agent run, requires the
-// Workflow tool). Results to be appended here in the form of the N>=3 trial
-// table once the live run is performed (mirroring tests/work-vs-plan-workflow-eval.ts).
+// RECORDED — N=3 live trials, 2026-06-13, against the committed
+// corpus-audit-fanout.generated.js (real Workflow dispatch, real subagents):
+//
+//   | trial | agents | subagent_tokens | status   | rounds | contradictions | ambiguous |
+//   |-------|--------|-----------------|----------|--------|----------------|-----------|
+//   | t1    | 7      | 159,793         | complete | 3      | 1 pair (2 dims) | stale    |
+//   | t2    | 7      | 158,250         | complete | 3      | 1 pair (1 dim)  | stale    |
+//   | t3    | 7      | 161,487         | complete | 3      | 1 pair (1 dim)  | stale    |
+//
+// Live-boundary contracts — all held on every trial:
+//   - args parsed (run_id populated, never the silent default); paths consumed.
+//   - agents actually executed (non-zero subagent_tokens, 4/4 docs classified).
+//   - no swallowed dispatch errors (failed_classifiers 0, dropped 0).
+//   - run_id + artifact_path populated; envelope matched the documented shape.
+//
+// Acceptance assertions — all held on every trial:
+//   - status complete; verdicts populated (not an empty silent run).
+//   - planted-ambiguous.md -> stale, NEVER a destructive verdict (R5). The live
+//     classifier emitted `stale` directly at confidence 25-50; the module's
+//     coercion is the backstop, exercised by the static layer above.
+//   - the contradiction-a/contradiction-b pair surfaced (dimension solution,
+//     sometimes also root_cause) and the loop terminated at round 3, inside the
+//     cap of 5 (R3).
+//   - solutions_file_count == 4 (R4).
+//   - the three unambiguous docs held stable Keep classes across all trials.
+//
+// TUNING NOTE — the live smoke surfaced (and fixed) a termination wrinkle, per
+// the plan's "confirm K/cap at the U6 live smoke." A FIRST run with found_new
+// keyed on (pair + dimension) produced a degraded status on a trial where the
+// classifier enumerated the same doc-pair contradiction across three dimensions
+// (solution/root_cause/prevention) at non-consecutive rounds — a more thorough
+// classifier kept resetting the dry counter and hit the cap. Fixed by keying
+// found_new on the contradicting doc-PAIR (a facet of a known pair is "dry");
+// all facets are still collected for the report. Post-fix: all three trials
+// reach quiescence at round 3 regardless of dimension count. K=2 / cap=5 confirmed.
