@@ -113,13 +113,17 @@ Two lessons fold back into this convention:
    `endsWith(".md")` filter:
 
    ```ts
+   // alongside the two existing per-agent tests in the same loop, so each
+   // file gets its own named test rather than a module-load-time assertion
    for (const fileName of agentFiles) {
-     expect(
-       /^ce-[a-z0-9-]+\.md$/.test(fileName),
-       `Agent filename "${fileName}" must be exactly ce-<name>.md — no `
-         + `.agent segment (see PR #846; .agent.md breaks VS Code Copilot `
-         + `tool access).`,
-     ).toBe(true)
+     test(`agent file "${fileName}" has no .agent.md double extension`, () => {
+       expect(
+         /^ce-[a-z0-9-]+\.md$/.test(fileName),
+         `Agent filename "${fileName}" must be exactly ce-<name>.md — no `
+           + `.agent segment (see PR #846; .agent.md breaks VS Code Copilot `
+           + `tool access).`,
+       ).toBe(true)
+     })
    }
    ```
 
