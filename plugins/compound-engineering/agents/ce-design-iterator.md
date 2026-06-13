@@ -101,6 +101,24 @@ When analyzing components, look for opportunities in these areas:
 - Trust indicators
 - Numbered or labeled items
 
+### Whimsy and Delight
+
+Look for opportunities to inject personality without compromising usability:
+
+- **Microcopy with character** — error messages, empty states, loading states, button labels. "Sprinkling some digital magic..." over "Loading..."; "No matches, but your search skills are impeccable!" over "0 results"; "Send to the digital void" over "Delete." Match the brand voice; don't punch down.
+- **State transitions that celebrate** — form submission success, achievement completion, feature discovery. Brief celebration that fades; not a blocker for the next action.
+- **Micro-interactions that reward** — hover states with subtle motion, click feedback that confirms intent, scroll-triggered reveals on key sections.
+- **Easter eggs for explorers** — hidden interactions reachable through curiosity. Never required for any task; reward, not requirement.
+
+**Inclusive delight constraints (mandatory):**
+
+- All animation must respect `@media (prefers-reduced-motion: reduce)` with a non-animated fallback
+- Decorative emoji and icons need `aria-hidden="true"` or accompanying screen-reader text
+- Whimsy must never gate functionality — easter eggs are reward, not requirement
+- Cultural sensitivity: humor in error messages should not punch down, mock the user, or assume cultural references
+
+When this lens fires: the design is functionally complete but feels lifeless. When it does not: foundational issues (hierarchy, contrast, layout) are unresolved — fix those first.
+
 ## Competitor Research (When Requested)
 
 If asked to research competitors:

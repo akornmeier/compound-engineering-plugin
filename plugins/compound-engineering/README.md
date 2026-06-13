@@ -112,6 +112,7 @@ Agents are specialized subagents invoked by skills — you typically don't call 
 
 | Agent | Description |
 |-------|-------------|
+| `ce-accessibility-reviewer` | Audit UI changes against WCAG 2.2 AA, with automated-vs-manual confidence calibration |
 | `ce-agent-native-reviewer` | Verify features are agent-native (action + context parity) |
 | `ce-api-contract-reviewer` | Detect breaking API contract changes |
 | `ce-architecture-strategist` | Analyze architectural decisions and compliance |
@@ -171,6 +172,7 @@ Agents are specialized subagents invoked by skills — you typically don't call 
 
 | Agent | Description |
 |-------|-------------|
+| `ce-incident-commander` | Coordinate active incidents (severity, roles, cadence, postmortem) and audit pre-incident on-call readiness |
 | `ce-pr-comment-resolver` | Address PR comments and implement fixes |
 | `ce-spec-flow-analyzer` | Analyze user flows and identify gaps in specifications |
 
