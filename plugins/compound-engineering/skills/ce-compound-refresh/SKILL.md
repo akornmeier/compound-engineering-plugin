@@ -293,6 +293,56 @@ There are two subagent roles:
 
 The orchestrator merges investigation results, detects contradictions, coordinates replacement subagents, and performs all deletions/metadata edits centrally. In interactive mode, it asks the user questions on ambiguous cases. In headless mode, it marks ambiguous cases as stale instead. If two artifacts overlap or discuss the same root issue, investigate them together rather than parallelizing.
 
+## Workflow acceleration (broad-scope headless only)
+
+In **headless mode at broad scope (9+ docs)**, when the **Workflow tool is available** (Claude Code), run the per-doc classification and the Phase 1.75 cross-doc contradiction pass as a dynamic workflow instead of the prose Subagent Strategy above — the per-doc classification evidence and the contradiction reasoning stay in the workflow runtime, so only the final envelope enters this orchestrator's context. This is also the **cross-platform guard**: on targets without the Workflow tool (Codex, Gemini, etc.), and in interactive / focused / batch scopes (whose value is the interactive ambiguity gate, which cannot convert), ignore this subsection and run the prose dispatch below.
+
+The workflow is **side-effect-free** — it classifies and recommends; this orchestrator performs every file write (Update / Consolidate / Delete / stale-mark) and the sequential Replace authoring centrally after the envelope returns.
+
+1. Glob `docs/solutions/` for the in-scope `.md` paths (excluding `README.md` and `_archived/`). Record the count — this is `solutions_file_count`, the corpus size measured **at glob time, before any mutation**.
+2. Mint the run id and date in this orchestrator's context (the Workflow runtime cannot mint a date — `Date.now()` throws there):
+   ```bash
+   RUN_ID="corpus-audit-$(date +%Y%m%d-%H%M%S)"
+   TODAY=$(date +%F)
+   ```
+3. Read `workflows/corpus-audit-fanout.generated.js` (co-located; resolved relative to this skill).
+4. Invoke the Workflow tool with `script` set to that file's contents and `args`:
+   - `paths` — the in-scope path list from step 1 (paths, **not** contents: the runtime has no filesystem; the dispatched agents Read their own docs).
+   - `solutions_file_count` — the count from step 1.
+   - `run_id` — from step 2 (a path-safe `[A-Za-z0-9_-]+` token).
+   - `today` — from step 2 (`YYYY-MM-DD`), for `stale_date` stamping during central writes.
+   - `scope_hint` — the scope hint from `$ARGUMENTS`, or omit.
+5. The workflow returns the envelope: `status`, `solutions_file_count`, `verdicts`, `grouped`, `contradictions`, `counts`, `today`, `artifact_path`, `run_id`. Apply it centrally:
+   - **Copy `grouped` verbatim** — the verdict-grouped path lists are produced deterministically by `classify-rollup.js`; do not re-derive groups from the flat `verdicts` list. Apply the central writes per group: `grouped.Update` (read each doc's `artifact_path` analysis for the exact edits), `grouped.Consolidate`, `grouped.Delete`, and `grouped.stale` (add `status: stale`, `stale_reason`, `stale_date: <today>`).
+   - **Replace authoring stays sequential and orchestrator-side** — for each path in `grouped.Replace`, dispatch one replacement subagent at a time (the existing "replacement subagents run one at a time" rule).
+   - **Resolve `contradictions`** through Consolidate or targeted Update/Replace, per Phase 1.75.
+   - If `status` is `degraded`, a classifier failed or the contradiction pass hit its cap — surface `counts.failed_classifiers` and that the envelope covers fewer docs than `solutions_file_count`; never read a degraded run as "all Keep / no contradictions."
+
+After applying the envelope, continue with **Phase 4.5 (Vocabulary Capture)** and **Phase 5 (Commit)** as usual — the workflow replaces only the classification + contradiction investigation, not the downstream phases.
+
+When the Workflow tool is unavailable, ignore this subsection and run the prose dispatch below.
+
+### Prose fallback (when the Workflow tool is unavailable)
+
+Run the broad-scope headless classification with the Subagent Strategy above, then apply the SAME deterministic rules the workflow uses — **do not improvise the safety coercion or the loop termination.** `workflows/classify-rollup.js` is the single source of truth; the workflow path and this fallback share it, so they cannot diverge. Apply exactly these rules (the module's):
+
+- **Stale-on-ambiguity coercion (the safety invariant).** A verdict is *ambiguous* when its `confidence` anchor is below the named threshold **`AMBIGUITY_CONFIDENCE_THRESHOLD` = 75** (anchors are `0/25/50/75/100`) or it is flagged ambiguous (an Update-vs-Replace-vs-Consolidate-vs-Delete borderline). Any ambiguous verdict coerces to `stale`. Even a confident **destructive** verdict needs its evidence gate: `Replace` coerces to `stale` unless its replacement evidence is sufficient; `Delete` coerces to `stale` unless implementation-gone AND domain-gone AND inbound-links-clear all hold. NEVER emit a destructive verdict (Delete / Replace / Consolidate) on ambiguity.
+- **Fail-closed degraded handling.** A null/failed classifier is recorded as `unverifiable`, never `Keep`; any failed classifier makes the run `degraded`. A degraded run is never read as "everything Keep / no problems."
+- **Deterministic order + grouped projection.** Sort verdicts on the doc path (the total key); derive the verdict-grouped path lists by filtering the sorted list, and apply writes per group — never let a model re-bucket.
+- **Loop-until-dry contradiction termination decision table** (`CONTRADICTION_K` = 2 consecutive dry rounds, `CONTRADICTION_CAP` = 5 hard iteration cap). Each round dispatches one agent per cluster (clustered by `module` / `problem_type` / `tags`); a "dry" round surfaces no new contradiction:
+
+  | round outcome | `dry_count` update | action | status |
+  |---|---|---|---|
+  | `round_failed` | `dry_count := 0` | continue (done at cap) | degraded |
+  | `found_new` contradiction | `dry_count := 0` | continue (done at cap) | degraded |
+  | clean round, `dry_count >= CONTRADICTION_K` | `dry_count += 1` | done | complete |
+  | clean round, `rounds >= CONTRADICTION_CAP` | `dry_count += 1` | done | degraded |
+  | clean round, otherwise | `dry_count += 1` | continue | continue |
+
+  A `round_failed` round NEVER counts as dry (it resets the quiescence count); a capped-out pass is `degraded`, never read as "no contradictions."
+
+If the platform has a JS runtime and can locate the co-located module, running it is the most exact path; otherwise apply the rules above verbatim.
+
 ## Phase 2: Classify the Right Maintenance Action
 
 After gathering evidence, assign one recommended action.
@@ -531,6 +581,7 @@ After processing the selected scope, output the following report:
 Compound Refresh Summary
 ========================
 Scanned: N learnings
+Corpus size: F docs/solutions/ files (in-scope, counted at glob time before any mutation)
 
 Kept: X
 Updated: Y
@@ -542,6 +593,8 @@ Marked stale: S
 
 CONCEPTS.md: <scanned, no qualifying terms | created with N entries (M seeded) | updated — N added, N refined, N reconciled, N scrubbed | repo-wide map created with N entries>
 ```
+
+`Corpus size` is the in-scope `docs/solutions/` file count measured at glob time, **before** this run's deletes/consolidations change the on-disk count — report that pre-mutation number, do not re-count afterward. It is the figure that tracks corpus growth across refresh runs.
 
 Then for EVERY file processed, list:
 - The file path
