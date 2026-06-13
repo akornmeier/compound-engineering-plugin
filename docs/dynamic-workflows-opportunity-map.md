@@ -243,7 +243,7 @@ Row schema: **Loop phase | Skill (path) | Pattern(s) | Criteria assessment (R2, 
 
 ## 6. Sequencing — Phase 0 + three per-metric tracks
 
-> **Revised 2026-06-07** after a grilling pass ([ADR 0001](adr/0001-per-metric-signal-gate.md), [CONTEXT.md](../CONTEXT.md)). The original single linear queue (rank 0–11) was the structural cause of a "march on asserted pain": it ranked candidates across incommensurable metrics as if they competed for one slot, and it hid which gate governs which candidate. The work is **three metric-tracks**, each with its own gate, preceded by a completed **pattern-proving phase**. Tracks do not buy parallel execution (one maintainer, serial) — they buy a **legible gate** and make the march impossible by construction.
+> **Revised 2026-06-07 (track-structure rewrite)** after a grilling pass ([ADR 0001](adr/0001-per-metric-signal-gate.md), [CONTEXT.md](../CONTEXT.md)). The original single linear queue (rank 0–11) was the structural cause of a "march on asserted pain": it ranked candidates across incommensurable metrics as if they competed for one slot, and it hid which gate governs which candidate. The work is **three metric-tracks**, each with its own gate, preceded by a completed **pattern-proving phase**. Tracks do not buy parallel execution (one maintainer, serial) — they buy a **legible gate** and make the march impossible by construction.
 
 ### Phase 0 — pattern-proving (COMPLETE)
 
