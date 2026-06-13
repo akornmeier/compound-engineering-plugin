@@ -1,7 +1,7 @@
 ---
 title: "feat: ce-compound-refresh corpus-audit dynamic workflow"
 type: feat
-status: active
+status: completed
 date: 2026-06-13
 origin: docs/dynamic-workflows-opportunity-map.md
 ---
