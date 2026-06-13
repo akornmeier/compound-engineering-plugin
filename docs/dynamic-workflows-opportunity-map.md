@@ -3,11 +3,15 @@ date: 2026-06-04
 topic: dynamic-workflows-opportunity-map
 type: opportunity-map
 origin: docs/brainstorms/2026-06-04-dynamic-workflows-opportunity-map-requirements.md
-revised: 2026-06-07
+revised: 2026-06-13
 related:
   - docs/plans/2026-06-04-dynamic-workflows-opportunity-map-plan.md
   - docs/plans/2026-06-04-001-feat-ce-code-review-workflow-fanout-plan.md
   - docs/plans/2026-06-06-001-feat-ce-doc-review-workflow-fanout-plan.md
+  - docs/plans/2026-06-07-001-feat-work-vs-plan-verification-probe-plan.md
+  - docs/plans/2026-06-08-001-feat-drift-capture-loop-plan.md
+  - docs/plans/2026-06-09-001-feat-ce-learning-sweep-mvp-plan.md
+  - docs/plans/2026-06-12-001-feat-capture-loop-closure-plan.md
   - docs/adr/0001-per-metric-signal-gate.md
   - CONTEXT.md
 ---
@@ -25,6 +29,8 @@ It is organized around the **compounding memory loop** as its spine — **Captur
 1. **Phase 0 (pattern-proving) is complete.** Two conversions landed — `ce-code-review`'s report-only `mode:agent` fan-out (PR #2) and `ce-doc-review` (PR #6, which successfully reused the template). They are live proof, not proposals. Per [ADR 0001](adr/0001-per-metric-signal-gate.md) they are justified by **de-risking and proving the pattern**, *not* by a STRATEGY metric — the earlier "Rework/churn" tag on them was post-hoc. See §3 and §6 Phase 0.
 2. **Sequencing is three per-metric tracks, not one queue.** A 2026-06-07 grilling pass found the original single linear queue was the structural cause of a "march on asserted pain." Work is now **Track A — Rework/churn** (the only one with a hard **Signal gate**, fed by a drift-rate **probe**), **Track B — Learnings reuse** (qualitative; Retrieve carries a **timing trigger**), and **Track C — Loop adoption** (qualitative). The three senses of "gate" (Candidacy / Signal / Timing) are defined in [CONTEXT.md](../CONTEXT.md). §6 has the tracks.
 3. **The baseline is headless/agent mode, not interactive mode.** Several candidates (`ce-compound`, `ce-compound-refresh`, `ce-code-review`, `ce-doc-review`) already fan out non-interactively and stage intermediate output to disk. A conversion's value is the **marginal gain over that existing baseline**, not over interactive mode. Rows assess the increment, not the absolute.
+
+**Status (refreshed 2026-06-13):** Since the 2026-06-07 revision, three pieces landed beyond Phase 0. **Track A0 — `work-vs-plan verification` shipped as `ce-verify-work`** (the drift probe). The **drift->capture loop** now persists durable drift events to `docs/drift-events/`. The **read edge `ce-drift-report`** aggregates those events at read time. Separately, the capture bottleneck (Track B0) is largely covered by the new **`ce-learning-sweep`** skill (per-PR sweep -> batched keep/reject -> capture-PR), a different design than B0's original `ce-compound` N-fan-out sketch. **The next action is now the Track A Signal gate decision** (§6): pre-commit threshold `T`, read the aggregate drift via `ce-drift-report`, then authorize (drift >= T) or halt (drift < T) the A1+ conversions. A1+, Track B1 (corpus-audit), and all of Track C remain unstarted; B2 (Retrieve) stays timing-deferred.
 
 **Scope note:** This document records downstream conversion-time questions; it does not resolve them. The conversions themselves are out of scope here — they are downstream `/ce-plan` + execution work.
 
@@ -135,6 +141,7 @@ Row schema: **Loop phase | Skill (path) | Pattern(s) | Criteria assessment (R2, 
 - **Criteria (R2):** *Gate:* passes — capture is one-learning-at-a-time and human-triggered today; the batch sweep is fully non-interactive. *Baseline:* `ce-compound` Full mode **already fans out 3 subagents** (Context Analyzer, Solution Extractor, Related Docs Finder) per learning and writes to `docs/solutions/` with pre-write overlap dedup; subagents return text to the orchestrator, which alone writes files. *Marginal gain:* the increment is **multiplying invocations** — sweeping a whole session/PR/window and fanning over N candidate learnings (N × the existing 3-agent shape), not adding fan-out to a serial step. *Fan-out:* N learnings (unbounded) × per-learning extraction. *Structured output:* strong — frontmatter schema (`references/schema.yaml`: `problem_type`, `component`, `severity` enums; track-specific required fields). *Rigor upside:* generate-and-filter worth-keeping gate + **write-time dedup** against existing `docs/solutions/` (today's dedup is per-invocation, not corpus-aware across a batch).
 - **Impact:** High — directly attacks the capture bottleneck ("captures only what the user remembers to document"). Serves **Learnings reuse** (more captured -> more to surface later).
 - **Conversion mode:** sub-step inside an interactive shell. Interactive gates that stay out: Full-vs-Lightweight mode choice, session-history consent, the "What's next?" terminal menu.
+- **Status (2026-06-13):** Largely covered by `ce-learning-sweep` (per-PR sweep -> batched keep/reject -> capture-PR via `ce-compound mode:headless`, with opt-in `mode:autonomous`) rather than this row's `ce-compound` N-fan-out workflow. The capture-bottleneck intent is addressed via that different design; the batch-capture-as-workflow form sketched here is superseded. See Track B (§6).
 
 ### 5.2 Retrieve
 
@@ -223,7 +230,7 @@ Row schema: **Loop phase | Skill (path) | Pattern(s) | Criteria assessment (R2, 
 - **Pattern(s):** classify-and-act
 - **Criteria (R2):** *Gate:* passes — fully non-interactive classification pass. *Baseline:* none — there is no reliable automated read on done-vs-remaining today (the named pain). *Marginal gain:* entire value is the increment. *Fan-out:* one classify per plan task (done / remaining / drifted vs actual repo state). *Structured output:* per-task verdict table. *Rigor upside:* verify each task's claim against the repo, not the plan's checkboxes.
 - **Impact:** High — but be precise about *what* it measures (see [ADR 0001](adr/0001-per-metric-signal-gate.md)). Its output is a **drift rate** — the fraction of plan tasks claimed done but the repo diverged — which is a *rework proxy*, **not** the same as "done-vs-remaining" (that is mere progress). This is **Track A's probe**: it produces the Rework/churn **Signal gate**'s reading. The reading is **read-time-derived** by aggregating `ce-compound`-captured drift learnings + session history — never stored as a number (that would reopen the out-of-scope task-ledger). The gate's first read is an **absolute threshold T pre-committed before this runs** (drift ≥ T authorizes Track A; drift < T halts it). The durable task-ledger redesign the brainstorm flags is out of scope; this covers the pain insofar as classification does.
-- **Conversion mode:** wholesale net-new workflow. **Next conversion** (Track A0).
+- **Conversion mode:** wholesale net-new workflow. **LANDED as `ce-verify-work`** (2026-06-07; `work-vs-plan-fanout.js` + `drift-rollup.js`, guarded with a prose fallback). The drift->capture loop (durable events in `docs/drift-events/`, 2026-06-08) and the read edge (`ce-drift-report`, 2026-06-12) also landed. **Track A0 complete** — the open step is now the Signal gate decision (§6).
 
 **tournament plan drafter** — net-new
 - **Relates to:** `ce-plan`
@@ -236,7 +243,7 @@ Row schema: **Loop phase | Skill (path) | Pattern(s) | Criteria assessment (R2, 
 
 ## 6. Sequencing — Phase 0 + three per-metric tracks
 
-> **Revised 2026-06-07** after a grilling pass ([ADR 0001](adr/0001-per-metric-signal-gate.md), [CONTEXT.md](../CONTEXT.md)). The original single linear queue (rank 0–11) was the structural cause of a "march on asserted pain": it ranked candidates across incommensurable metrics as if they competed for one slot, and it hid which gate governs which candidate. The work is **three metric-tracks**, each with its own gate, preceded by a completed **pattern-proving phase**. Tracks do not buy parallel execution (one maintainer, serial) — they buy a **legible gate** and make the march impossible by construction.
+> **Revised 2026-06-07 (track-structure rewrite)** after a grilling pass ([ADR 0001](adr/0001-per-metric-signal-gate.md), [CONTEXT.md](../CONTEXT.md)). The original single linear queue (rank 0–11) was the structural cause of a "march on asserted pain": it ranked candidates across incommensurable metrics as if they competed for one slot, and it hid which gate governs which candidate. The work is **three metric-tracks**, each with its own gate, preceded by a completed **pattern-proving phase**. Tracks do not buy parallel execution (one maintainer, serial) — they buy a **legible gate** and make the march impossible by construction.
 
 ### Phase 0 — pattern-proving (COMPLETE)
 
@@ -248,9 +255,9 @@ The **only** track with a hard **Signal gate**. STRATEGY flags Rework/churn as "
 
 | Order | Candidate | Role | Gate |
 |---|---|---|---|
-| A0 | **work-vs-plan verification** | **Probe — next conversion.** Produces the gating signal: a **drift rate** (plan tasks claimed done but the repo diverged), read-time-derived from `ce-compound`-captured drift learnings + session history. A rework *proxy*, not "done-vs-remaining" progress. | it *is* the probe |
-| GATE | **Signal gate** | drift >= T -> Track A authorized; drift < T -> **halt Track A, reallocate** to B/C (qualitative work). **T pre-committed before A0 runs.** | — |
-| A1+ | ce-plan deepening sub-step; ce-resolve-pr-feedback; ce-optimize; ce-simplify-code | Authorized **only on drift >= T**, ordered by marginal-over-baseline (deepening > resolve-pr > optimize > simplify). | behind the gate |
+| A0 | **work-vs-plan verification** | **LANDED** as `ce-verify-work` (2026-06-07). Produces the per-plan drift reading; durable drift events now persist to `docs/drift-events/` (drift->capture loop, 2026-06-08) and aggregate at read time via `ce-drift-report` (2026-06-12). | done — it *was* the probe |
+| GATE | **Signal gate** | **<- NEXT ACTION.** Pre-commit absolute threshold `T`, read the aggregate drift via `ce-drift-report`, then drift >= T -> Track A authorized; drift < T -> **halt Track A, reallocate** to B/C (qualitative work). `T` is committed against the aggregate reading **before the gate is first read** (ADR 0001). The reading mechanism shipped; `T` and the authorize/halt decision are the open step. | — |
+| A1+ | ce-plan deepening sub-step; ce-resolve-pr-feedback; ce-optimize; ce-simplify-code | **Not started.** Authorized **only on drift >= T**, ordered by marginal-over-baseline (deepening > resolve-pr > optimize > simplify). | behind the gate |
 
 ce-resolve-pr-feedback additionally needs a pre-commit gate redesign (§5.5); ce-optimize and ce-simplify-code are low-marginal-gain (already headless / small fixed fan-out).
 
@@ -260,7 +267,7 @@ No Signal gate — proceeds on qualitative judgment. STRATEGY names a session-hi
 
 | Order | Candidate | Role | Trigger |
 |---|---|---|---|
-| B0 | **batch-learning-capture** | Track lead. Attacks the capture bottleneck; `ce-compound`'s 3-agent fan-out already exists to multiply; write-time dedup is the rigor upside. | — |
+| B0 | **batch-learning-capture** | **Largely landed** via `ce-learning-sweep` (per-PR sweep -> batched keep/reject -> capture-PR through `ce-compound mode:headless`, opt-in `mode:autonomous`) — a different design than this row's `ce-compound` N-fan-out sketch, attacking the same capture bottleneck. | — |
 | B1 | corpus-audit (Maintain) | Headless baseline + stale-marking safety invariant already specified; corpus-wide loop-until-dry is the increment. **Emits the `docs/solutions/` file count** that feeds B2's trigger. | — |
 | B2 | **high-recall Retrieve (R9)** | Highest *leverage* of any candidate (every consumer skill reads this seam) but **timing-triggered**. | **Timing trigger:** store-size >= 150 files (≈5× today's 31), read from B1's emitted count; or first observed recall complaint. |
 
@@ -272,7 +279,7 @@ No Signal gate — proceeds on qualitative judgment. STRATEGY names a session-hi
 | C1 | ce-ideate evaluate sub-step | Parallelize the currently-sequential Phase 3 evaluate; clean seam at Phase 6. |
 | C2 | tournament plan drafter | Speculative; high rigor upside, lower confidence. |
 
-**Next action is unambiguous: `work-vs-plan verification` (A0)** — the rework probe. Track B/C work may proceed in parallel on qualitative grounds.
+**Next action is the Track A Signal gate decision** — A0 (`ce-verify-work`), the drift->capture loop, and the read edge (`ce-drift-report`) have all landed, so the open step is to pre-commit `T`, read the aggregate drift via `ce-drift-report`, and authorize (drift >= T) or halt (drift < T) the A1+ conversions. Track B/C work may proceed in parallel on qualitative grounds.
 
 **Caveat (no silent caps):** only Track A has an evidence gate, and only after A0 produces the drift reading. Track B/C orderings remain qualitative proxies — `STRATEGY.md` confirms Rework/churn is "qualitative today, not yet instrumented." This is reasoned sequencing, not a measured optimum.
 
@@ -309,10 +316,10 @@ Conversion-time questions, attached to the candidates they affect. These are dow
 
 | Question | Lands on | Status |
 |---|---|---|
-| Sequencing / first-conversion (R7) | §6 | **Superseded** by [ADR 0001](adr/0001-per-metric-signal-gate.md): Phase 0 pattern-proving is complete (code-review, doc-review); the **next** conversion is `work-vs-plan verification` as Track A's drift **probe**. No longer a single-queue ranking. |
+| Sequencing / first-conversion (R7) | §6 | **Resolved + advanced** per [ADR 0001](adr/0001-per-metric-signal-gate.md): Phase 0 (code-review, doc-review), Track A0 (`ce-verify-work`), the drift->capture loop, and the read edge (`ce-drift-report`) have all landed (2026-06-07 – 2026-06-12). The **next action is the Track A Signal gate decision** (pre-commit `T`, read aggregate drift, authorize/halt A1+) — a judgment step, not a conversion. No longer a single-queue ranking. |
 | Batch-capture trigger (per-PR / per-session / per-window) + write-time dedup against existing `docs/solutions/` (R8) | Capture row (batch-learning-capture) | Open — needs research at conversion time. |
 | What "semantic" retrieval means given the grep-first, frontmatter store — does high-recall need an index/embedding layer, or is multi-modal grep + verification enough? (R9) | Retrieve row (B2) | Open — technical, resolve when the **timing trigger** fires (store >= 150 files, read from corpus-audit's emitted count). |
-| Value of **T**, the pre-committed drift threshold that authorizes/halts Track A | Track A Signal gate (§6) | Open — set at conversion time, **before** the work-vs-plan probe runs; pre-commitment is the discipline (ADR 0001). |
+| Value of **T**, the pre-committed drift threshold that authorizes/halts Track A | Track A Signal gate (§6) | Open — **now the next action.** The probe (`ce-verify-work`) and the aggregate reading mechanism (`ce-drift-report`) have shipped; `T` must be pre-committed against the aggregate reading **before the gate is first read**, then the authorize/halt decision taken. Pre-commitment is the discipline (ADR 0001). |
 | Mechanism for keeping a workflow-based skill from emitting broken orchestration on non-CC targets — guard, gate, or converter-level handling (R15) | §7 Design constraints | Open — the landed inline-guard pattern is one answer; whether the converter should handle it is undecided. |
 | Safe-automation boundary for corpus-audit's archive/replace actions — how much runs unattended vs. needs a gate (R10) | Maintain row | Invariant stated (stale-marking, §5.3); boundary-tuning is a conversion-time open question. |
 
@@ -320,7 +327,7 @@ Conversion-time questions, attached to the candidates they affect. These are dow
 
 ## Appendix: how this map satisfies its success criteria
 
-- **(a) A planner can start a conversion without re-deriving** — every candidate row carries phase, pattern(s), R2 criteria assessment (marginal-over-baseline), impact, and conversion mode. §6 gives the per-metric tracks; the next action is `work-vs-plan verification` (A0).
+- **(a) A planner can start a conversion without re-deriving** — every candidate row carries phase, pattern(s), R2 criteria assessment (marginal-over-baseline), impact, and conversion mode. §6 gives the per-metric tracks; A0 (`ce-verify-work`) has landed, so the next action is the Track A Signal gate decision.
 - **(b) Rankings trace to STRATEGY metrics** — each track *is* a metric (Rework/churn / Learnings reuse / Loop adoption); only Track A carries an evidence gate (drift), and the caveat acknowledges Rework/churn is uninstrumented until A0's probe produces the reading.
 - **(c) Criteria are reusable** — §2 is written to score a new skill cold (the gate, six axes, and formula stand alone).
 - **(d) R14 is reject-testable** — §7 gives two profiles (consumer vs loop-internal): the empty-store smoke test plus the seam-reach test for consumers, and the seam-contract test for loop-internal conversions.
