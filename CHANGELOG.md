@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.12.0](https://github.com/akornmeier/compound-engineering-plugin/compare/cli-v3.11.0...cli-v3.12.0) (2026-06-13)
+
+
+### Features
+
+* **agents:** add ce-accessibility-reviewer and ce-incident-commander; extend four agents ([54e1ee5](https://github.com/akornmeier/compound-engineering-plugin/commit/54e1ee5b869e0e3eb90550f8674c37aa2a6726f9))
+
 ## [3.11.0](https://github.com/akornmeier/compound-engineering-plugin/compare/cli-v3.10.0...cli-v3.11.0) (2026-06-12)
 
 
